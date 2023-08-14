@@ -14,8 +14,7 @@
     "baseUrl": ".",
     "outDir": "dist",
     "paths": {
-      "chemical-rx": ["./src/index.ts"],
-      "chemical-rx/*": ["./src/*.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],

@@ -1,7 +1,7 @@
 {
-  "name": "wobby-ui",
+  "name": "wobui",
   "version": "0.0.0",
-  "description": "wobby's component library",
+  "description": "wobby's ui component library",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dxu/wobby-ui.git"
+    "url": "git+https://github.com/dxu/wobui.git"
   },
   "author": "dxu",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/dxu/wobby-ui/issues"
+    "url": "https://github.com/dxu/wobui/issues"
   },
-  "homepage": "https://github.com/dxu/wobby-ui#readme",
+  "homepage": "https://github.com/dxu/wobui#readme",
   "devDependencies": {
     "@babel/core": "^7.22.10",
     "@babel/plugin-transform-react-jsx": "^7.22.5",
@@ -48,6 +48,43 @@
     "./index.cjs.js": "./dist/index.cjs.js"
   },
   "dependencies": {
-    "@rollup/plugin-typescript": "^11.1.2"
+    "@hookform/resolvers": "^3.2.0",
+    "@radix-ui/react-accordion": "^1.1.2",
+    "@radix-ui/react-alert-dialog": "^1.0.4",
+    "@radix-ui/react-aspect-ratio": "^1.0.3",
+    "@radix-ui/react-avatar": "^1.0.3",
+    "@radix-ui/react-checkbox": "^1.0.4",
+    "@radix-ui/react-collapsible": "^1.0.3",
+    "@radix-ui/react-context-menu": "^2.1.4",
+    "@radix-ui/react-dialog": "^1.0.4",
+    "@radix-ui/react-dropdown-menu": "^2.0.5",
+    "@radix-ui/react-hover-card": "^1.0.6",
+    "@radix-ui/react-label": "^2.0.2",
+    "@radix-ui/react-menubar": "^1.0.3",
+    "@radix-ui/react-navigation-menu": "^1.1.3",
+    "@radix-ui/react-popover": "^1.0.6",
+    "@radix-ui/react-progress": "^1.0.3",
+    "@radix-ui/react-radio-group": "^1.1.3",
+    "@radix-ui/react-scroll-area": "^1.0.4",
+    "@radix-ui/react-select": "^1.2.2",
+    "@radix-ui/react-separator": "^1.0.3",
+    "@radix-ui/react-slider": "^1.1.2",
+    "@radix-ui/react-slot": "^1.0.2",
+    "@radix-ui/react-switch": "^1.0.3",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@radix-ui/react-toast": "^1.1.4",
+    "@radix-ui/react-toggle": "^1.0.3",
+    "@radix-ui/react-tooltip": "^1.0.6",
+    "@rollup/plugin-typescript": "^11.1.2",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "cmdk": "^0.2.0",
+    "date-fns": "^2.30.0",
+    "lucide-react": "^0.267.0",
+    "react-day-picker": "^8.8.0",
+    "react-hook-form": "^7.45.4",
+    "tailwind-merge": "^1.14.0",
+    "tailwindcss-animate": "^1.0.6",
+    "zod": "^3.21.4"
   }
 }
