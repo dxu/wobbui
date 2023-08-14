@@ -8,7 +8,7 @@
     "prebuild": "rimraf dist",
     "test": "jest",
     "clean": "rm -rf ./dist",
-    "build": "npm run prebuild && rollup -c"
+    "build": "npm run prebuild && node --max-old-space-size=8192 node_modules/rollup/dist/bin/rollup -c rollup.config.js"
   },
   "repository": {
     "type": "git",
