@@ -1,5 +1,5 @@
 {
-  "name": "wobui",
+  "name": "wobbui",
   "version": "0.0.0",
   "description": "wobby's ui component library",
   "main": "dist/index.js",
@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dxu/wobui.git"
+    "url": "git+https://github.com/dxu/wobbui.git"
   },
   "author": "dxu",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/dxu/wobui/issues"
+    "url": "https://github.com/dxu/wobbui/issues"
   },
-  "homepage": "https://github.com/dxu/wobui#readme",
+  "homepage": "https://github.com/dxu/wobbui#readme",
   "devDependencies": {
     "@babel/core": "^7.22.10",
     "@babel/plugin-transform-react-jsx": "^7.22.5",
