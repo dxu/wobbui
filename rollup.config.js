@@ -39,6 +39,14 @@ function createDeclarationConfig(input, output) {
         minimize: false,
         sourceMap: true,
       }),
+      alias({
+        entries: [
+          {
+            find: /^@\/(.*)/,
+            replacement: path.resolve(__dirname, "src/$1"),
+          },
+        ],
+      }),
       typescript({
         declaration: true,
         emitDeclarationOnly: true,

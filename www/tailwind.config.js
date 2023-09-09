@@ -1,4 +1,5 @@
 /** @type {import('tailwindcss').Config} */
+import wobbui from "wobbui/plugin";
 
 export default {
   content: [
@@ -9,5 +10,5 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [import("wobbui/plugin")],
+  plugins: [wobbui],
 };

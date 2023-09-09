@@ -46,14 +46,16 @@ pnpm i wobbui
    `wobbui`:
 
 ```javascript
-module.exports = {
+import wobbui from "wobbui/plugin";
+
+export default {
   content: [
     ...,
     'node_modules/wobbui/**/*.{js,jsx,ts,tsx}'
   ],
   plugins: [..., require('wobbui/plugin')],
   ...
-};
+}
 ```
 
 ## Customization
