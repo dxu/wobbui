@@ -1,7 +1,9 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+
+const plugin = require("tailwindcss/plugin");
+
+module.exports = plugin(function ({ addUtilities, e, theme, variants }) {}, {
   darkMode: ["class"],
-  content: ["./src/**/*.{ts,tsx}"],
   theme: {
     container: {
       center: true,
@@ -67,5 +69,8 @@ module.exports = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
-};
+  plugins: [
+    require("tailwindcss-animate"),
+    require("@mertasan/tailwindcss-variables"),
+  ],
+});

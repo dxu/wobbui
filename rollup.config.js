@@ -1,6 +1,8 @@
-
 const path = require("path");
 const fs = require("fs");
+const alias = require("@rollup/plugin-alias");
+const postcss = require("rollup-plugin-postcss");
+const autoprefixer = require("autoprefixer");
 
 const { visualizer } = require("rollup-plugin-visualizer");
 const babel = require("@rollup/plugin-babel");
@@ -9,15 +11,17 @@ const typescript = require("@rollup/plugin-typescript");
 
 const createBabelConfig = require("./babel.config");
 
+const EXTENSION = /(\.(umd|cjs|es|m))?\.([cm]?[tj]sx?)$/;
+
 const { root } = path.parse(process.cwd());
-const external = (id) => !id.startsWith(".") && !id.startsWith(root);
+const external = (id) =>
+  !id.startsWith(".") && !id.startsWith(root) && !id.startsWith("@/");
 const extensions = [".js", ".ts", ".tsx"];
 const getBabelOptions = (targets) => ({
   babelHelpers: "bundled",
   ...createBabelConfig({ env: (env) => env === "build" }, targets),
   extensions,
 });
-
 
 function createDeclarationConfig(input, output) {
   return {
@@ -27,6 +31,14 @@ function createDeclarationConfig(input, output) {
     },
     external,
     plugins: [
+      postcss({
+        plugins: [autoprefixer()],
+        autoModules: true,
+        modules: true,
+        extract: "styles.css",
+        minimize: false,
+        sourceMap: true,
+      }),
       typescript({
         declaration: true,
         emitDeclarationOnly: true,
@@ -43,6 +55,23 @@ function createESMConfig(input, output) {
     output: { file: output, format: "esm" },
     external,
     plugins: [
+      postcss({
+        plugins: [autoprefixer()],
+        autoModules: true,
+        modules: true,
+        extract: "styles.css",
+        minimize: false,
+        sourceMap: true,
+      }),
+
+      alias({
+        entries: [
+          {
+            find: /^@\/(.*)/,
+            replacement: path.resolve(__dirname, "src/$1"),
+          },
+        ],
+      }),
       babel(getBabelOptions({ node: 8 })),
       // sizeSnapshot(),
       resolve({ extensions }),
@@ -57,6 +86,23 @@ function createCommonJSConfig(input, output) {
     output: { file: output, format: "cjs", exports: "named" },
     external,
     plugins: [
+      postcss({
+        plugins: [autoprefixer()],
+        autoModules: true,
+        modules: true,
+        extract: "styles.css",
+        minimize: false,
+        sourceMap: true,
+      }),
+
+      alias({
+        entries: [
+          {
+            find: /^@\/(.*)/,
+            replacement: path.resolve(__dirname, "src/$1"),
+          },
+        ],
+      }),
       babel(getBabelOptions({ ie: 11 })),
       // sizeSnapshot(),
       resolve({ extensions }),
@@ -79,6 +125,22 @@ function createIIFEConfig(input, output, globalName) {
     },
     external,
     plugins: [
+      postcss({
+        plugins: [autoprefixer()],
+        autoModules: true,
+        modules: true,
+        extract: "styles.css",
+        minimize: false,
+        sourceMap: true,
+      }),
+      alias({
+        entries: [
+          {
+            find: /^@\/(.*)/,
+            replacement: path.resolve(__dirname, "src/$1"),
+          },
+        ],
+      }),
       babel(getBabelOptions({ ie: 11 })),
       // sizeSnapshot(),
       resolve({ extensions }),
@@ -113,7 +175,7 @@ function createIIFEConfig(input, output, globalName) {
 
 // console.log(configs)
 module.exports = [
-  createDeclarationConfig('src/index.ts', 'dist'),
+  createDeclarationConfig("src/index.ts", "dist"),
   createESMConfig("src/index.ts", "dist/index.js"),
   createCommonJSConfig("src/index.ts", "dist/index.cjs.js"),
   createIIFEConfig("src/index.ts", "dist/index.iife.js", "wobui"),
