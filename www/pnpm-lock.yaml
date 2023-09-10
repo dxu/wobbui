@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  lucide-react:
+    specifier: ^0.274.0
+    version: 0.274.0(react@18.2.0)
   react:
     specifier: ^18.2.0
     version: 18.2.0
@@ -12,8 +15,8 @@ dependencies:
     specifier: ^18.2.0
     version: 18.2.0(react@18.2.0)
   wobbui:
-    specifier: ^0.0.2
-    version: 0.0.2(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2)
+    specifier: ^0.0.3
+    version: 0.0.3(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2)
 
 devDependencies:
   '@types/react':
@@ -2875,6 +2878,14 @@ packages:
       react: 18.2.0
     dev: false
 
+  /lucide-react@0.274.0(react@18.2.0):
+    resolution: {integrity: sha512-qiWcojRXEwDiSimMX1+arnxha+ROJzZjJaVvCC0rsG6a9pUPjZePXSq7em4ZKMp0NDm1hyzPNkM7UaWC3LU2AA==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0
+    dependencies:
+      react: 18.2.0
+    dev: false
+
   /merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
@@ -3538,8 +3549,8 @@ packages:
       isexe: 2.0.0
     dev: true
 
-  /wobbui@0.0.2(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2):
-    resolution: {integrity: sha512-Fp34G+62IuPqWlCwU0XRdTxLwmBMAeWI1AXL6pzMkWhYMVx6TU3A0DmgNcqAYCy3EDPsO/JedfF58YbEdhZZgg==}
+  /wobbui@0.0.3(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2):
+    resolution: {integrity: sha512-A9BNzlsr7zjfTQt6rPUGUPTQ1ivB+wD4D880lakoIOPW0GedE6FowA0nb8bXzpmy180Wf6+iJrNwGpA7v/elSw==}
     peerDependencies:
       react: ^18.2.0
       rxjs: ^7.5.7
