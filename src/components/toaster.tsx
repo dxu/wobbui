@@ -1,17 +1,21 @@
-"use client"
+"use client";
 
 import {
   Toast,
+  ToastAction,
+  type ToastActionElement,
   ToastClose,
   ToastDescription,
+  type ToastProps,
   ToastProvider,
   ToastTitle,
   ToastViewport,
-} from "@/utils/_toast"
-import { useToast, toast } from "@/utils/_use-toast"
+} from "@/utils/_toast";
 
-export function Toaster() {
-  const { toasts } = useToast()
+import { toast, useToast } from "@/utils/_use-toast";
+
+function Toaster() {
+  const { toasts } = useToast();
 
   return (
     <ToastProvider>
@@ -27,11 +31,24 @@ export function Toaster() {
             {action}
             <ToastClose />
           </Toast>
-        )
+        );
       })}
       <ToastViewport />
     </ToastProvider>
-  )
+  );
 }
 
-export {useToast, toast}
+export {
+  Toast,
+  toast,
+  ToastAction,
+  type ToastActionElement,
+  ToastClose,
+  ToastDescription,
+  Toaster,
+  type ToastProps,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+  useToast,
+};
