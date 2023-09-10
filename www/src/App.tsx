@@ -1,33 +1,32 @@
+import { ScrollArea } from "wobbui";
+
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import viteLogo from "/vite.svg";
-import { Button } from "wobbui";
+
+import components from "./mappings";
+
+type ComponentType = keyof typeof components;
 
 function App() {
-  const [count, setCount] = useState(0);
-
+  const [selected, setSelected] = useState<ComponentType>("Accordion");
   return (
-    <div className="w-screen h-screen">
-      <div className="flex">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <Button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </Button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+    <div className="flex w-screen h-screen">
+      <ScrollArea>
+        <div className="flex flex-col  px-4 py-4 text-lg divide-y">
+          {Object.entries(components).map(([key]) => {
+            return (
+              <a
+                className="py-2 px-4 hover:bg-black"
+                onClick={() => {
+                  setSelected(key as ComponentType);
+                }}
+              >
+                {key as ComponentType}
+              </a>
+            );
+          })}
+        </div>
+      </ScrollArea>
+      <div className="flex-grow">{components[selected].component}</div>
     </div>
   );
 }
