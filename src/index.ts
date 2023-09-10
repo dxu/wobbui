@@ -37,3 +37,6 @@ export * from "./components/textarea";
 export * from "./components/toaster";
 export * from "./components/toggle";
 export * from "./components/tooltip";
+
+export * from "./utils/_use-toast";
+export * from "./utils/cn";
