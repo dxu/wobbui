@@ -15,8 +15,8 @@ dependencies:
     specifier: ^18.2.0
     version: 18.2.0(react@18.2.0)
   wobbui:
-    specifier: ^0.0.3
-    version: 0.0.3(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2)
+    specifier: ^0.0.4
+    version: 0.0.4(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2)
 
 devDependencies:
   '@types/react':
@@ -3549,8 +3549,8 @@ packages:
       isexe: 2.0.0
     dev: true
 
-  /wobbui@0.0.3(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2):
-    resolution: {integrity: sha512-A9BNzlsr7zjfTQt6rPUGUPTQ1ivB+wD4D880lakoIOPW0GedE6FowA0nb8bXzpmy180Wf6+iJrNwGpA7v/elSw==}
+  /wobbui@0.0.4(@types/react-dom@18.2.7)(@types/react@18.2.15)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.0.2):
+    resolution: {integrity: sha512-zM5FgoY4+2M89AKQ4NOGnghVeZ2X3Y67WzPnteNSwDfgfi0b1PgO03rvSbsYwteWeOq+ALXSQHN39IHQHqYFkA==}
     peerDependencies:
       react: ^18.2.0
       rxjs: ^7.5.7
