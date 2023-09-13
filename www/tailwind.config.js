@@ -10,5 +10,5 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [wobbui],
+  plugins: [wobbui, require("tailwindcss-animate")],
 };
