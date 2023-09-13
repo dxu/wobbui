@@ -15,7 +15,12 @@ module.exports = (api, targets) => {
         }
       ],
       "@babel/preset-typescript",
-      "@babel/preset-react"
+      [
+        "@babel/preset-react",
+        {
+          runtime: "automatic"
+        }
+      ]
     ],
     plugins: [
       "@babel/plugin-transform-react-jsx",
