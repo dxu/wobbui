@@ -11,14 +11,15 @@ module.exports = (api, targets) => {
         {
           loose: true,
           modules: isTestEnv ? "commonjs" : false,
-          targets: isTestEnv ? { node: "current" } : targets,
-        },
+          targets: isTestEnv ? { node: "current" } : targets
+        }
       ],
       "@babel/preset-typescript",
+      "@babel/preset-react"
     ],
     plugins: [
       "@babel/plugin-transform-react-jsx",
-      ["@babel/plugin-transform-typescript", { isTSX: true }],
-    ],
+      ["@babel/plugin-transform-typescript", { isTSX: true }]
+    ]
   };
 };
