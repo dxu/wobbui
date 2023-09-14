@@ -1,4 +1,4 @@
-import { Badge, ScrollArea, Toaster } from "wobbui";
+import { ScrollArea, Toaster } from "wobbui";
 
 import { useState } from "react";
 
