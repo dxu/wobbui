@@ -7,19 +7,20 @@ import ComponentPreview from "./ComponentPreview";
 import Installation from "./Installation";
 
 function App() {
-  const [selected, setSelected] = useState<ComponentType | null>("Accordion");
+  const [selected, setSelected] = useState<ComponentType | null>(null);
   return (
     <div className="flex w-screen h-screen">
       <Toaster />
       <div className="flex flex-col py-4 text-md divide-y flex-shrink-0 border-r border-solid">
-        <div className="flex py-4 px-8 text-xl">wobbui</div>
+        <div className="flex font-bold py-4 px-8 text-xl">wobbui</div>
         <a
           href=""
-          onClick={() => {
+          onClick={(e) => {
+            e.preventDefault();
             setSelected(null);
           }}
         >
-          <div className="flex py-4 px-8 text-lg">Installation</div>
+          <div className="flex py-4 px-8 text-lg">Setup</div>
         </a>
         <ScrollArea>
           <div className="flex flex-col">

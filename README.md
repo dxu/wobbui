@@ -10,7 +10,7 @@
 Install Tailwind CSS:
 
 ```bash
-pnpm i -D autoprefixer postcss tailwindcss
+pnpm i -D autoprefixer postcss tailwindcss tailwindcss-animate
 npx tailwindcss init -p
 ```
 
