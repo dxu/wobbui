@@ -53,7 +53,12 @@ export default {
     ...,
     'node_modules/wobbui/**/*.{js,jsx,ts,tsx}'
   ],
-  plugins: [..., require('wobbui/plugin')],
+  plugins: [
+    ...,
+    require('wobbui/plugin'),
+    // required for animations
+    require('tailwindcss-animate')
+  ],
   ...
 }
 ```
