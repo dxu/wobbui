@@ -261,4 +261,6 @@ const mappings = {
   },
 };
 
+export type ComponentType = keyof typeof mappings;
+
 export default mappings;
