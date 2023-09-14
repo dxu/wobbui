@@ -21,8 +21,8 @@ dependencies:
     specifier: ^1.0.7
     version: 1.0.7(tailwindcss@3.3.3)
   wobbui:
-    specifier: ^0.0.9
-    version: 0.0.9(@types/react-dom@18.2.7)(@types/react@18.2.21)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.2.2)
+    specifier: ^0.0.11
+    version: 0.0.11(@types/react-dom@18.2.7)(@types/react@18.2.21)(autoprefixer@10.4.15)(postcss@8.4.29)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(tailwindcss@3.3.3)(typescript@5.2.2)
 
 devDependencies:
   '@types/react':
@@ -401,6 +401,18 @@ packages:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.1
       '@jridgewell/sourcemap-codec': 1.4.15
+
+  /@mertasan/tailwindcss-variables@2.7.0(autoprefixer@10.4.15)(postcss@8.4.29):
+    resolution: {integrity: sha512-rKPhxi/0r6XWP0+OjPmsfrloX/TtQmvONj2Pr3Nl8BNBznQVP3M9sphguDBUDC0AiKYx2xgup3XzAhlIDLPLIA==}
+    engines: {node: '>=12.13.0'}
+    peerDependencies:
+      autoprefixer: ^10.0.2
+      postcss: ^8.0.9
+    dependencies:
+      autoprefixer: 10.4.15(postcss@8.4.29)
+      lodash: 4.17.21
+      postcss: 8.4.29
+    dev: false
 
   /@nodelib/fs.scandir@2.1.5:
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -2210,7 +2222,6 @@ packages:
       picocolors: 1.0.0
       postcss: 8.4.29
       postcss-value-parser: 4.2.0
-    dev: true
 
   /balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
@@ -2240,7 +2251,6 @@ packages:
       electron-to-chromium: 1.4.518
       node-releases: 2.0.13
       update-browserslist-db: 1.0.11(browserslist@4.21.10)
-    dev: true
 
   /callsites@3.1.0:
     resolution: {integrity: sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==}
@@ -2253,7 +2263,6 @@ packages:
 
   /caniuse-lite@1.0.30001533:
     resolution: {integrity: sha512-9aY/b05NKU4Yl2sbcJhn4A7MsGwR1EPfW/nrqsnqVA0Oq50wpmPaGI+R1Z0UKlUl96oxUkGEOILWtOHck0eCWw==}
-    dev: true
 
   /chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
@@ -2406,7 +2415,6 @@ packages:
 
   /electron-to-chromium@1.4.518:
     resolution: {integrity: sha512-eqbfyW9i/en/qgIPsddW+cuxQvjq3KZmfH+/gc3f/gnynYj0qxee0yRmll69W0SGwiVD+goeU1J9LT6zDHDzlg==}
-    dev: true
 
   /esbuild@0.18.20:
     resolution: {integrity: sha512-ceqxoedUrcayh7Y7ZX6NdbbDzGROiyVBgC4PriJThBKSVPWnnFHZAkfI1lJT8QFkOwH4qOS2SJkS4wvpGl8BpA==}
@@ -2441,7 +2449,6 @@ packages:
   /escalade@3.1.1:
     resolution: {integrity: sha512-k0er2gUkLf8O0zKJiAhmkTnJlTvINGv7ygDNPbeIsX/TJjGJZHuh9B2UxbsaEkmlEo9MfhrSzmhIlhRlI2GXnw==}
     engines: {node: '>=6'}
-    dev: true
 
   /escape-string-regexp@4.0.0:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
@@ -2635,7 +2642,6 @@ packages:
 
   /fraction.js@4.3.6:
     resolution: {integrity: sha512-n2aZ9tNfYDwaHhvFTkhFErqOMIb8uyzSQ+vGJBjZyanAKZVbGUQ1sngfk9FdkBw7G26O7AgNjLcecLffD1c7eg==}
-    dev: true
 
   /fs.realpath@1.0.0:
     resolution: {integrity: sha512-OO0pH2lK6a0hZnAdau5ItzHPI6pUlvI7jMVnxUQRtw4owF2wk8lOSabtGDCTP4Ggrg2MbGnWO9X8K1t4+fGMDw==}
@@ -2885,6 +2891,10 @@ packages:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
     dev: true
 
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
+    dev: false
+
   /loose-envify@1.4.0:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
@@ -2960,7 +2970,6 @@ packages:
 
   /node-releases@2.0.13:
     resolution: {integrity: sha512-uYr7J37ae/ORWdZeQ1xxMJe3NtdmqMC/JZK+geofDrkLUApKRHPd18/TxtBOJ4A0/+uUIliorNrfYV6s1b02eQ==}
-    dev: true
 
   /normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -2969,7 +2978,6 @@ packages:
   /normalize-range@0.1.2:
     resolution: {integrity: sha512-bdok/XvKII3nUpklnV6P2hxtMNrCboOjAcyBuQnWEhO665FwrSNRxU+AqpsyvO6LgGYPspN+lu5CLtw4jPRKNA==}
     engines: {node: '>=0.10.0'}
-    dev: true
 
   /object-assign@4.1.1:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
@@ -3523,7 +3531,6 @@ packages:
       browserslist: 4.21.10
       escalade: 3.1.1
       picocolors: 1.0.0
-    dev: true
 
   /uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -3608,13 +3615,14 @@ packages:
       isexe: 2.0.0
     dev: true
 
-  /wobbui@0.0.9(@types/react-dom@18.2.7)(@types/react@18.2.21)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(typescript@5.2.2):
-    resolution: {integrity: sha512-gzjVe9CucdGTEZGa3OODAa//emWOBSH8cmMMbrtW0tsm6yew4uAPtIbcR+TDwBSaDtjvdJFNIh51h0tFBpHBNA==}
+  /wobbui@0.0.11(@types/react-dom@18.2.7)(@types/react@18.2.21)(autoprefixer@10.4.15)(postcss@8.4.29)(react-dom@18.2.0)(react@18.2.0)(rxjs@7.8.1)(tailwindcss@3.3.3)(typescript@5.2.2):
+    resolution: {integrity: sha512-NjAc9zC0KDYY7z6cfgu8+KWA7ABzGDLOElUYDQz2ihy4M/T1XyVpDWhK7xEY/BRRou3llepyZ8ftDxMeuBDefw==}
     peerDependencies:
       react: ^18.2.0
       rxjs: ^7.5.7
     dependencies:
       '@hookform/resolvers': 3.3.1(react-hook-form@7.46.1)
+      '@mertasan/tailwindcss-variables': 2.7.0(autoprefixer@10.4.15)(postcss@8.4.29)
       '@radix-ui/react-accordion': 1.1.2(@types/react-dom@18.2.7)(@types/react@18.2.21)(react-dom@18.2.0)(react@18.2.0)
       '@radix-ui/react-alert-dialog': 1.0.4(@types/react-dom@18.2.7)(@types/react@18.2.21)(react-dom@18.2.0)(react@18.2.0)
       '@radix-ui/react-aspect-ratio': 1.0.3(@types/react-dom@18.2.7)(@types/react@18.2.21)(react-dom@18.2.0)(react@18.2.0)
@@ -3652,12 +3660,16 @@ packages:
       react-hook-form: 7.46.1(react@18.2.0)
       rxjs: 7.8.1
       tailwind-merge: 1.14.0
+      tailwindcss-animate: 1.0.7(tailwindcss@3.3.3)
       zod: 3.22.2
     transitivePeerDependencies:
       - '@types/react'
       - '@types/react-dom'
+      - autoprefixer
+      - postcss
       - react-dom
       - rollup
+      - tailwindcss
       - tslib
       - typescript
     dev: false
