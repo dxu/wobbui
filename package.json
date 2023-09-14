@@ -95,6 +95,8 @@
     "react-day-picker": "^8.8.0",
     "react-hook-form": "^7.45.4",
     "tailwind-merge": "^1.14.0",
+    "tailwindcss-animate": "^1.0.7",
+    "@mertasan/tailwindcss-variables": "^2.6.1",
     "zod": "^3.21.4"
   }
 }
