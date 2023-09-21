@@ -1,7 +1,9 @@
 # wobbui
 
 `wobbui` is a collection of React components based off of
-[`shadcn/ui`](https://github.com/shadcn-ui/ui) exported as an npm package.
+[`shadcn/ui`](https://github.com/shadcn-ui/ui) exported as an npm package. 
+
+[Demo](dxu.github.io/wobbui/)
 
 ## Installation
 
