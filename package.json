@@ -1,6 +1,6 @@
 {
   "name": "wobbui",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "wobby's ui component library",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
