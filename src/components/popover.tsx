@@ -18,7 +18,7 @@ const PopoverContent = React.forwardRef<
     { className, align = "center", sideOffset = 4, container, ...props },
     ref
   ) => (
-    <PopoverPrimitive.Portal container={container || null}>
+    <PopoverPrimitive.Portal container={container || document.body}>
       <PopoverPrimitive.Content
         ref={ref}
         align={align}
