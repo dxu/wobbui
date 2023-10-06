@@ -1,3 +1,5 @@
+const preserveDirectives = require("rollup-plugin-preserve-directives").default;
+
 const path = require("path");
 const fs = require("fs");
 const alias = require("@rollup/plugin-alias");
@@ -28,6 +30,7 @@ function createDeclarationConfig(input, output) {
     input,
     output: {
       dir: output,
+      preserveModules: true,
     },
     external,
     plugins: [
@@ -53,6 +56,7 @@ function createDeclarationConfig(input, output) {
         outDir: output,
         declarationDir: output,
       }),
+      preserveDirectives(),
     ],
   };
 }
@@ -60,7 +64,7 @@ function createDeclarationConfig(input, output) {
 function createESMConfig(input, output) {
   return {
     input,
-    output: { file: output, format: "esm" },
+    output: { dir: output, format: "esm", preserveModules: true },
     external,
     plugins: [
       postcss({
@@ -84,6 +88,7 @@ function createESMConfig(input, output) {
       // sizeSnapshot(),
       resolve({ extensions }),
       visualizer(),
+      preserveDirectives(),
     ],
   };
 }
@@ -91,7 +96,12 @@ function createESMConfig(input, output) {
 function createCommonJSConfig(input, output) {
   return {
     input,
-    output: { file: output, format: "cjs", exports: "named" },
+    output: {
+      dir: output,
+      format: "cjs",
+      exports: "named",
+      preserveModules: true,
+    },
     external,
     plugins: [
       postcss({
@@ -114,6 +124,7 @@ function createCommonJSConfig(input, output) {
       babel(getBabelOptions({ ie: 11 })),
       // sizeSnapshot(),
       resolve({ extensions }),
+      preserveDirectives(),
     ],
   };
 }
@@ -184,7 +195,7 @@ function createIIFEConfig(input, output, globalName) {
 // console.log(configs)
 module.exports = [
   createDeclarationConfig("src/index.ts", "dist"),
-  createESMConfig("src/index.ts", "dist/index.js"),
-  createCommonJSConfig("src/index.ts", "dist/index.cjs.js"),
+  createESMConfig("src/index.ts", "dist"),
+  createCommonJSConfig("src/index.ts", "dist"),
   createIIFEConfig("src/index.ts", "dist/index.iife.js", "wobui"),
 ];
