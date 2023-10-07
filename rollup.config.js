@@ -58,7 +58,7 @@ function createDeclarationConfig(input, output) {
         declarationDir: output,
       }),
       preserveDirectives(),
-      banner2(() => "use client"),
+      banner2(() => '"use client";'),
     ],
   };
 }
@@ -91,7 +91,7 @@ function createESMConfig(input, output) {
       resolve({ extensions }),
       visualizer(),
       preserveDirectives(),
-      banner2(() => "use client"),
+      banner2(() => '"use client";'),
     ],
   };
 }
@@ -128,7 +128,7 @@ function createCommonJSConfig(input, output) {
       // sizeSnapshot(),
       resolve({ extensions }),
       preserveDirectives(),
-      banner2(() => "use client"),
+      banner2(() => '"use client";'),
     ],
   };
 }
@@ -165,7 +165,7 @@ function createIIFEConfig(input, output, globalName) {
         ],
       }),
       babel(getBabelOptions({ ie: 11 })),
-      banner2(() => "use client"),
+      banner2(() => '"use client";'),
       // sizeSnapshot(),
       resolve({ extensions }),
     ],
