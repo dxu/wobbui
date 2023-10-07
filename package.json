@@ -41,6 +41,7 @@
     "microbundle": "^0.15.1",
     "rimraf": "^5.0.1",
     "rollup": "^3.28.0",
+    "rollup-plugin-banner2": "^1.2.2",
     "rollup-plugin-postcss": "^4.0.2",
     "rollup-plugin-preserve-directives": "^0.2.0",
     "rollup-plugin-size-snapshot": "^0.12.0",
