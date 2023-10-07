@@ -5,8 +5,10 @@ export default defineConfig({
   format: ["esm", "cjs", "iife"],
   dts: true,
   external: ["react", "rxjs", "react-hook-form", "zod", "@hookform/resolvers"],
-  banner: {
-    js: '"use client";',
+  esbuildOptions(options) {
+    options.banner = {
+      js: '"use client"',
+    };
   },
   globalName: "wobbui",
 });
