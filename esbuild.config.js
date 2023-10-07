@@ -18,7 +18,13 @@ esbuild
     entryPoints: ["src/index.ts"],
     bundle: true,
     outdir: "dist",
-    external: ["react", "rxjs"], // replace with your externals
+    external: [
+      "react",
+      "rxjs",
+      "react-hook-form",
+      "zod",
+      "@hookform/resolvers",
+    ], // replace with your externals
     plugins: commonPlugins,
     loader: {
       ".ts": "ts",
@@ -31,7 +37,7 @@ esbuild
       js: '"use client";',
     },
     sourcemap: true,
-    minify: true,
+    minify: false,
     format: "esm", // for ES modules
     target: ["es2017"],
     alias,

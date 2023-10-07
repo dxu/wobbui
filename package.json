@@ -9,8 +9,10 @@
     "test": "jest",
     "clean": "rm -rf ./dist",
     "bump": "pnpm run build && pnpm version patch",
-    "declarations": "tsc --emitDeclarationOnly",
-    "build": "npm run declarations && node esbuild.config.js"
+    "build:declarations": "tsc --emitDeclarationOnly",
+    "build:esm": "tsup src/index.ts --format esm --dts --external react,rxjs",
+    "build:cjs": "tsup src/index.ts --format cjs --dts --external react,rxjs",
+    "build": "npm run build:declarations && npm run build:esm && npm run build:cjs"
   },
   "repository": {
     "type": "git",
@@ -53,6 +55,7 @@
     "tailwindcss": "^3.3.3",
     "tailwindcss-animate": "^1.0.7",
     "ts-node": "^10.9.1",
+    "tsup": "^7.2.0",
     "typescript": "^5.1.6"
   },
   "peerDependencies": {
