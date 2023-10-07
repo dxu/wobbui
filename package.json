@@ -10,9 +10,7 @@
     "clean": "rm -rf ./dist",
     "bump": "pnpm run build && pnpm version patch",
     "build:declarations": "tsc --emitDeclarationOnly",
-    "build:esm": "tsup src/index.ts --format esm --dts --external react,rxjs",
-    "build:cjs": "tsup src/index.ts --format cjs --dts --external react,rxjs",
-    "build": "npm run build:declarations && npm run build:esm && npm run build:cjs"
+    "build": "npm run build:declarations && tsup"
   },
   "repository": {
     "type": "git",
