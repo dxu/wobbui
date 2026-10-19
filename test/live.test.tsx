@@ -1,7 +1,7 @@
 import { host } from "./dom.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mount, signal, type Signal } from "wobbui";
+import { mount, onCleanup, signal, type Signal } from "wobbui";
 
 test("a signal child changes its text in place", () => {
   const parent = host();
@@ -113,6 +113,103 @@ test("a list inside a function is rebuilt whenever its signal changes", () => {
   );
 });
 
+test("a function child shows its new HTML even when a cleanup in the HTML it replaces throws", () => {
+  const parent = host();
+  const tab = signal("clock");
+  mount(parent, () => <div>{() => (tab.get() === "clock" ? <Clock /> : <p>Settings</p>)}</div>);
+  assert.throws(() => tab.set("settings"), /already removed/, "the error still reaches the code that set the signal");
+  assert.equal(parent.textContent, "Settings");
+  tab.set("clock");
+  assert.equal(parent.textContent, "Clock", "the spot still follows its signal");
+});
+
+test("a function child keeps the HTML it shows when the function throws", () => {
+  const parent = host();
+  const tab = signal("menu");
+  mount(parent, () => (
+    <div>
+      {() => {
+        if (tab.get() === "lab") throw new Error("the lab broke");
+        return <p>Menu</p>;
+      }}
+    </div>
+  ));
+  assert.throws(() => tab.set("lab"), /the lab broke/);
+  assert.equal(parent.textContent, "Menu");
+});
+
+test("if a function child throws and its cleanup throws too, the function's error is the one thrown", () => {
+  const parent = host();
+  const tab = signal("menu");
+  mount(parent, () => (
+    <div>
+      {() => {
+        if (tab.get() === "menu") return "Menu";
+        onCleanup(() => {
+          throw new Error("the cleanup failed");
+        });
+        throw new Error("the lab broke");
+      }}
+    </div>
+  ));
+  assert.throws(() => tab.set("lab"), /the lab broke/);
+});
+
+test("a function child can show again an element it showed before", () => {
+  const parent = host();
+  const user = signal("Ada");
+  const profile = <p>Profile</p>;
+  mount(parent, () => <div>{() => (user.get() === "" ? "Sign in" : profile)}</div>);
+  user.set("Grace");
+  assert.equal(parent.textContent, "Profile");
+});
+
+test("when a function child's new HTML fails to build, the spots it started stop", () => {
+  const parent = host();
+  const page = signal("menu");
+  const volume = signal(1);
+  const heard: number[] = [];
+  mount(parent, () => (
+    <div>
+      {() =>
+        page.get() === "menu"
+          ? "Menu"
+          : [
+              () => {
+                heard.push(volume.get());
+                return "Lab";
+              },
+              () => {
+                throw new Error("the lab broke");
+              },
+            ]
+      }
+    </div>
+  ));
+  assert.throws(() => page.set("lab"), /the lab broke/);
+  volume.set(2);
+  assert.deepEqual(heard, [1], "the spot built before the failure no longer listens");
+});
+
+test("a function child shows text again after a rebuild that failed", () => {
+  const parent = host();
+  const status = signal<string | null>("Ready");
+  mount(parent, () => (
+    <p>
+      {() =>
+        status.get() ?? [
+          () => {
+            throw new Error("no status");
+          },
+        ]
+      }
+    </p>
+  ));
+  assert.throws(() => status.set(null), /no status/);
+  status.set("Done");
+  assert.equal(parent.textContent, "Done");
+});
+
 test("a component's own reads don't subscribe the spot that built it", () => {
   const parent = host();
   const theme = signal("light");
@@ -131,3 +228,11 @@ test("a component's own reads don't subscribe the spot that built it", () => {
 test("a live value outside mount says where it belongs", () => {
   assert.throws(() => <p>{signal(1)}</p>, /mount/);
 });
+
+/** A component whose cleanup throws, as one removing an element that's already gone would. */
+function Clock() {
+  onCleanup(() => {
+    throw new Error("the element was already removed");
+  });
+  return <p>Clock</p>;
+}

@@ -118,6 +118,91 @@ test("set runs every watcher even when one throws, then throws the first error",
   assert.deepEqual(heard, [1, 2]);
 });
 
+test("a watch whose cleanup throws still runs again, and keeps listening", () => {
+  const volume = signal(1);
+  const heard: number[] = [];
+  watch(() => {
+    const value = volume.get();
+    heard.push(value);
+    if (value === 1) {
+      onCleanup(() => {
+        throw new Error("the old player was already closed");
+      });
+    }
+  });
+  assert.throws(() => volume.set(2), /already closed/, "the error still reaches the code that set the signal");
+  volume.set(3);
+  assert.deepEqual(heard, [1, 2, 3]);
+});
+
+test("a watch whose cleanup throws still runs once more when it changes a signal it reads", () => {
+  const volume = signal(5);
+  const heard: number[] = [];
+  watch(() => {
+    const value = volume.get();
+    heard.push(value);
+    if (value > 10) volume.set(10);
+    if (value === 5) {
+      onCleanup(() => {
+        throw new Error("the old player was already closed");
+      });
+    }
+  });
+  assert.throws(() => volume.set(15), /already closed/);
+  assert.deepEqual(heard, [5, 15, 10], "the last run sees the settled value");
+});
+
+test("a run that throws after changing a signal it reads still runs once more", () => {
+  const volume = signal(5);
+  const heard: number[] = [];
+  watch(() => {
+    const value = volume.get();
+    heard.push(value);
+    if (value > 10) {
+      volume.set(10);
+      throw new Error("too loud");
+    }
+  });
+  assert.throws(() => volume.set(15), /too loud/);
+  assert.deepEqual(heard, [5, 15, 10], "the last run sees the settled value");
+});
+
+test("a watch that throws and never settles rethrows its first error", () => {
+  const count = signal(0);
+  assert.throws(
+    () =>
+      watch(() => {
+        count.set(count.get() + 1);
+        throw new Error("bad input");
+      }),
+    /bad input/,
+  );
+});
+
+test("if a watch's first run throws and its cleanup throws too, the run's error is the one thrown", () => {
+  assert.throws(
+    () =>
+      watch(() => {
+        onCleanup(() => {
+          throw new Error("the cleanup failed");
+        });
+        throw new Error("the run failed");
+      }),
+    /the run failed/,
+  );
+});
+
+test("when a cleanup and the run after it both throw, the cleanup's error, the first, is rethrown", () => {
+  const volume = signal(1);
+  watch(() => {
+    if (volume.get() > 1) throw new Error("the run failed");
+    onCleanup(() => {
+      throw new Error("the cleanup failed");
+    });
+  });
+  assert.throws(() => volume.set(2), /the cleanup failed/);
+});
+
 test("a watch whose first run throws is stopped", () => {
   const volume = signal(1);
   let runs = 0;

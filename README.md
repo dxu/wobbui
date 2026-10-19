@@ -176,6 +176,11 @@ function Clock() {
 A part that rebuilds is cleaned up the same way each time it's rebuilt, and so is a `watch` before each of its runs:
 another `watch` or an `onCleanup` started in a run is stopped before the next.
 
+When something throws, wobbui keeps going. A cleanup that throws as old HTML goes doesn't stop the new HTML from
+showing, and a `watch` whose cleanup throws still runs. If a part's function throws, the part keeps the HTML it
+showed; if a function child it returns throws on its first run, the part shows nothing until its signal changes again.
+Either way, what the failed HTML started stops, and the error reaches the code that changed the signal, as `set` says.
+
 Outside of building, `watch` and `mount` hand you `stop` and `unmount` to call yourself. A live value outside any
 `mount` or `watch` is an error, since nothing would ever stop it. With [wobbree](https://github.com/dxu/wobbree), tie
 the HTML to an owner: `owner.onDispose(mount(parent, () => <Menu />))`.
@@ -206,8 +211,9 @@ Returns a `Signal<T>`:
 
 Runs `run` now, and again whenever a signal it read the last time changes. Returns `stop`. Started while HTML is built,
 it also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped before
-the next run. A run that changes a signal it read runs once more afterwards, so the last run sees the settled value;
-one that keeps changing it stops with an error after 100 runs. If the first run throws, the watch is stopped.
+the next run; a cleanup that throws doesn't stop the next run, and its error is rethrown after it. A run that changes a
+signal it read runs once more afterwards, even if it threw, so the last run sees the settled value; one that keeps
+changing it stops with an error after 100 runs. If the first run throws, the watch is stopped.
 
 ### `onCleanup(cleanup)`
 

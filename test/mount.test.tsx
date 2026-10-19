@@ -143,3 +143,16 @@ test("if building throws, nothing is added, and live spots made so far stop", ()
   assert.equal(parent.childNodes.length, 0);
   assert.deepEqual(heard, [5]);
 });
+
+test("if building throws and a cleanup then throws too, the error from building is the one thrown", () => {
+  assert.throws(
+    () =>
+      mount(host(), () => {
+        onCleanup(() => {
+          throw new Error("the cleanup failed");
+        });
+        throw new Error("broken component");
+      }),
+    /broken component/,
+  );
+});

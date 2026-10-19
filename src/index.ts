@@ -34,18 +34,29 @@ class Watcher {
       return;
     }
     this.#running = true;
+    // A run that throws still gets the run it asked for, so the last run sees the last value. The first error is
+    // rethrown after, even when the runs never settle: it says more than running out of runs does.
+    let failure: { error: unknown } | undefined;
     try {
       let runs = 0;
       do {
-        if (++runs > MAX_RUNS) throw new Error("wobbui: a watcher kept changing a signal it reads.");
+        if (++runs > MAX_RUNS) {
+          failure ??= { error: new Error("wobbui: a watcher kept changing a signal it reads.") };
+          break;
+        }
         this.#again = false;
         this.#unsubscribe();
-        track(this, this.#run);
+        try {
+          track(this, this.#run);
+        } catch (error) {
+          failure ??= { error };
+        }
       } while (this.#again && !this.#stopped);
     } finally {
       this.#running = false;
       this.#again = false;
     }
+    if (failure !== undefined) throw failure.error;
   }
 
   subscribe(watchers: Set<Watcher>): void {
@@ -115,19 +126,32 @@ export function signal<T>(value: T): Signal<T> {
 /**
  * Runs `run` now, and again whenever a signal it read changes. Returns `stop`. Called while HTML is being built, it
  * also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped
- * before the next run.
+ * before the next run. A cleanup that throws doesn't stop the next run; its error is rethrown after it.
  */
 export function watch(run: () => void): () => void {
   const owner = building;
   let pass: Scope | undefined;
   const endPass = () => {
-    pass?.dispose();
+    const ended = pass;
     pass = undefined;
+    ended?.dispose();
   };
   return bind(() => {
-    endPass();
+    // The run goes ahead even when ending the last one throws: it reads the signals that run it again, so skipping it
+    // would leave the watch listening to nothing, never to run again.
+    let failure: { error: unknown } | undefined;
+    try {
+      endPass();
+    } catch (error) {
+      failure = { error };
+    }
     pass = owner === undefined ? new Scope() : owner.child();
-    within(pass, run);
+    try {
+      within(pass, run);
+    } catch (error) {
+      failure ??= { error };
+    }
+    if (failure !== undefined) throw failure.error;
   }, endPass);
 }
 
@@ -201,10 +225,22 @@ function bind(run: () => void, onStop?: () => void): () => void {
   try {
     watcher.run();
   } catch (error) {
-    stop();
-    throw error;
+    rethrowAfter(error, stop);
   }
   return stop;
+}
+
+/**
+ * Runs `cleanup` after `error` stopped something, then rethrows `error`. An error from `cleanup` is dropped: the first
+ * error says what went wrong, as `set` rethrows only the first.
+ */
+function rethrowAfter(error: unknown, cleanup: () => void): never {
+  try {
+    cleanup();
+  } catch {
+    // Dropped: the first error is the one rethrown.
+  }
+  throw error;
 }
 
 /** Calls `act` for each item. If one throws, the rest still run, and the first error is rethrown. */
@@ -309,8 +345,7 @@ export function mount(parent: Node, build: () => JSX.Element): () => void {
       for (const node of nodes) node.parentNode?.removeChild(node);
     });
   } catch (error) {
-    unmount();
-    throw error;
+    rethrowAfter(error, unmount);
   }
   building?.onDispose(unmount);
   return unmount;
@@ -429,7 +464,9 @@ function append(parent: Node, child: Child): void {
 
 /**
  * A child that changes. Text changes in place. Anything else is rebuilt whenever a signal the function read changes:
- * the HTML it showed before is removed, and its own live spots stop.
+ * the HTML it showed before is removed, and its own live spots stop. A cleanup of the old HTML that throws doesn't stop
+ * the new HTML from showing. If the function throws, the old HTML stays; if a function child it returns throws on its
+ * first run, the spot shows nothing until the next change. Either way, what the failed HTML started stops.
  */
 function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
@@ -447,8 +484,7 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       try {
         value = within(next, live);
       } catch (error) {
-        next.dispose();
-        throw error;
+        rethrowAfter(error, () => next?.dispose());
       }
     }
     if (text !== undefined && isText(value)) {
@@ -457,16 +493,29 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       return;
     }
     next ??= owner.child();
-    shown?.dispose();
+    // The old HTML goes before the value is added, so an element the function returns again stays on the page. If a
+    // cleanup of the old throws, the new HTML still shows, and the error is rethrown once it does.
+    let failure: { error: unknown } | undefined;
+    try {
+      shown?.dispose();
+    } catch (error) {
+      failure = { error };
+    }
     shown = next;
+    text = undefined;
     const fragment = document.createDocumentFragment();
-    within(next, () => track(undefined, () => append(fragment, value as Child)));
+    try {
+      within(next, () => track(undefined, () => append(fragment, value as Child)));
+    } catch (error) {
+      rethrowAfter(failure === undefined ? error : failure.error, () => next?.dispose());
+    }
     text = isText(value) ? (fragment.firstChild as Text) : undefined;
     const nodes = [...fragment.childNodes];
     next.onDispose(() => {
       for (const node of nodes) node.parentNode?.removeChild(node);
     });
     end.parentNode?.insertBefore(fragment, end);
+    if (failure !== undefined) throw failure.error;
   });
 }
 
