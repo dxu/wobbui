@@ -243,13 +243,13 @@ library and bundled minified. Medians of 12 page loads and 4 runs of 3 seconds e
 
 | | Compressed | Menu built, CPU slowed 4x | Script per frame, a number changing every frame |
 | --- | --- | --- | --- |
-| **wobbui** | **2.1 KB** | **11.3 ms** | **0.051 ms** |
-| Plain DOM, written by hand | 0.6 KB | 7.5 ms | 0.038 ms |
-| VanJS 1.6 | 1.6 KB | 10.9 ms | 0.071 ms |
-| lit-html 3.3 | 3.6 KB | 17.9 ms | 0.047 ms |
-| Solid 1.9 | 6.1 KB | 16.3 ms | 0.054 ms |
-| Preact 11 | 6.1 KB | 16.5 ms | 0.107 ms |
-| React 19.3 | 69.5 KB | 77.4 ms | 0.181 ms |
+| **wobbui** | **2.2 KB** | **10.9 ms** | **0.048 ms** |
+| Plain DOM, written by hand | 0.6 KB | 8.8 ms | 0.039 ms |
+| VanJS 1.6 | 1.6 KB | 9.8 ms | 0.073 ms |
+| lit-html 3.3 | 3.6 KB | 16.7 ms | 0.047 ms |
+| Solid 1.9 | 6.1 KB | 14.2 ms | 0.054 ms |
+| Preact 11 | 6.1 KB | 13.9 ms | 0.102 ms |
+| React 19.3 | 69.5 KB | 69.5 ms | 0.166 ms |
 
 Sizes are whole bundles, the menu's own code included. A frame lasts 16.7 ms at 60 frames a second. HTML that isn't
 changing runs no script at all: every library measured 0 ms a second.
