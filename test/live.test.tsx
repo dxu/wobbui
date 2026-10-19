@@ -1,7 +1,7 @@
 import { host } from "./dom.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mount, signal, type Signal } from "wobbui";
+import { mount, onCleanup, signal, type Signal } from "wobbui";
 
 test("a signal child changes its text in place", () => {
   const parent = host();
@@ -113,6 +113,35 @@ test("a list inside a function is rebuilt whenever its signal changes", () => {
   );
 });
 
+test("a function child shows its new HTML even when a cleanup in the HTML it replaces throws", () => {
+  const parent = host();
+  const tab = signal("clock");
+  mount(parent, () => <div>{() => (tab.get() === "clock" ? <Clock /> : <p>Settings</p>)}</div>);
+  assert.throws(() => tab.set("settings"), /already cleared/, "the error still reaches the code that set the signal");
+  assert.equal(parent.textContent, "Settings");
+  tab.set("clock");
+  assert.equal(parent.textContent, "Clock", "the spot still follows its signal");
+});
+
+test("a function child keeps the HTML it shows when the HTML replacing it fails to build", () => {
+  const parent = host();
+  const prices = signal([1, 2]);
+  mount(parent, () => (
+    <ul>
+      {() =>
+        prices.get().map((price) => () => {
+          if (price < 0) throw new Error("a price can't be negative");
+          return <li>{price}</li>;
+        })
+      }
+    </ul>
+  ));
+  assert.throws(() => prices.set([3, -1]), /negative/);
+  assert.equal(parent.textContent, "12");
+  prices.set([3, 4]);
+  assert.equal(parent.textContent, "34", "the spot still follows its signal");
+});
+
 test("a component's own reads don't subscribe the spot that built it", () => {
   const parent = host();
   const theme = signal("light");
@@ -131,3 +160,11 @@ test("a component's own reads don't subscribe the spot that built it", () => {
 test("a live value outside mount says where it belongs", () => {
   assert.throws(() => <p>{signal(1)}</p>, /mount/);
 });
+
+/** A component whose cleanup throws, as one that clears its timer twice might. */
+function Clock() {
+  onCleanup(() => {
+    throw new Error("the timer was already cleared");
+  });
+  return <p>Clock</p>;
+}

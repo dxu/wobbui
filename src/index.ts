@@ -115,19 +115,32 @@ export function signal<T>(value: T): Signal<T> {
 /**
  * Runs `run` now, and again whenever a signal it read changes. Returns `stop`. Called while HTML is being built, it
  * also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped
- * before the next run.
+ * before the next run. A cleanup that throws doesn't stop the next run; its error is rethrown after it.
  */
 export function watch(run: () => void): () => void {
   const owner = building;
   let pass: Scope | undefined;
   const endPass = () => {
-    pass?.dispose();
+    const ended = pass;
     pass = undefined;
+    ended?.dispose();
   };
   return bind(() => {
-    endPass();
+    // The run goes ahead even when ending the last one throws: it reads the signals that run it again, so skipping it
+    // would leave the watch listening to nothing, never to run again.
+    let failure: { error: unknown } | undefined;
+    try {
+      endPass();
+    } catch (error) {
+      failure = { error };
+    }
     pass = owner === undefined ? new Scope() : owner.child();
-    within(pass, run);
+    try {
+      within(pass, run);
+    } catch (error) {
+      failure ??= { error };
+    }
+    if (failure !== undefined) throw failure.error;
   }, endPass);
 }
 
@@ -429,7 +442,8 @@ function append(parent: Node, child: Child): void {
 
 /**
  * A child that changes. Text changes in place. Anything else is rebuilt whenever a signal the function read changes:
- * the HTML it showed before is removed, and its own live spots stop.
+ * the new HTML takes the place of the HTML shown before, which is removed, and its own live spots stop. If the new HTML
+ * can't be built, the old HTML stays.
  */
 function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
@@ -457,16 +471,23 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       return;
     }
     next ??= owner.child();
-    shown?.dispose();
-    shown = next;
     const fragment = document.createDocumentFragment();
-    within(next, () => track(undefined, () => append(fragment, value as Child)));
+    try {
+      within(next, () => track(undefined, () => append(fragment, value as Child)));
+    } catch (error) {
+      next.dispose();
+      throw error;
+    }
     text = isText(value) ? (fragment.firstChild as Text) : undefined;
     const nodes = [...fragment.childNodes];
     next.onDispose(() => {
       for (const node of nodes) node.parentNode?.removeChild(node);
     });
     end.parentNode?.insertBefore(fragment, end);
+    // The old HTML goes only once the new is in place, so a cleanup of the old that throws can't leave the spot empty.
+    const old = shown;
+    shown = next;
+    old?.dispose();
   });
 }
 

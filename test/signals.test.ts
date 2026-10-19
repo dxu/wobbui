@@ -118,6 +118,23 @@ test("set runs every watcher even when one throws, then throws the first error",
   assert.deepEqual(heard, [1, 2]);
 });
 
+test("a watch whose cleanup throws still runs again, and keeps listening", () => {
+  const volume = signal(1);
+  const heard: number[] = [];
+  watch(() => {
+    const value = volume.get();
+    heard.push(value);
+    if (value === 1) {
+      onCleanup(() => {
+        throw new Error("the old player was already closed");
+      });
+    }
+  });
+  assert.throws(() => volume.set(2), /already closed/, "the error still reaches the code that set the signal");
+  volume.set(3);
+  assert.deepEqual(heard, [1, 2, 3]);
+});
+
 test("a watch whose first run throws is stopped", () => {
   const volume = signal(1);
   let runs = 0;
