@@ -340,19 +340,18 @@ export function mount(parent: Node, build: () => JSX.Element): () => void {
   try {
     const html = within(scope, () => track(undefined, build));
     // The HTML is whatever lies between two markers, so unmounting removes what's there then: an element that another
-    // mount or a function child has taken since stays where it went.
+    // mount or a live spot has taken since stays where it went. The markers go in first, so a parent that refuses the
+    // HTML refuses it before it leaves wherever it was.
     const start = marker();
     const end = marker();
-    const added = document.createDocumentFragment();
-    added.appendChild(start);
-    added.appendChild(html);
-    added.appendChild(end);
-    parent.appendChild(added);
     scope.onDispose(() => {
       clear(start, end);
       start.remove();
       end.remove();
     });
+    parent.appendChild(start);
+    parent.appendChild(end);
+    parent.insertBefore(html, end);
   } catch (error) {
     rethrowAfter(error, unmount);
   }
@@ -513,7 +512,8 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
         rethrowAfter(error, () => next?.dispose());
       }
     }
-    if (text !== undefined && isText(value)) {
+    // Text changes in place, unless the page has removed its node, as `normalize()` removes an empty one.
+    if (text !== undefined && text.parentNode !== null && isText(value)) {
       text.data = String(value);
       next?.dispose();
       return;

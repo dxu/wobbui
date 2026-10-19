@@ -164,6 +164,32 @@ test("unmount leaves an element that a later mount in the same parent has taken"
   assert.equal(parent.textContent, "Panel");
 });
 
+test("unmount empties the live spots it built inside an element another mount has taken", () => {
+  const first = host();
+  const second = host();
+  const count = signal(1);
+  let card = <p />;
+  const unmountFirst = mount(first, () => (card = <p>Count: {count}</p>));
+  mount(second, () => card);
+  unmountFirst();
+  count.set(2);
+  assert.equal(second.textContent, "Count: ");
+});
+
+test("if the parent refuses the HTML, an element shown elsewhere stays where it was", () => {
+  const shelf = host();
+  const panel = <p>Panel</p>;
+  shelf.append(panel);
+  const refusing = {
+    appendChild: (node: Node) => node,
+    insertBefore() {
+      throw new Error("no room");
+    },
+  } as unknown as Node;
+  assert.throws(() => mount(refusing, () => panel), /no room/);
+  assert.equal(shelf.textContent, "Panel");
+});
+
 test("if building throws and a cleanup then throws too, the error from building is the one thrown", () => {
   assert.throws(
     () =>

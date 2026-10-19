@@ -10,7 +10,7 @@ doesn't change costs nothing after it's built, and a number that changes every f
 - **`mount` returns `unmount`,** which removes the HTML and stops everything live in it, including whatever was started
   while it was built.
 
-It is one small file with no dependencies: about 1.9 KB compressed.
+It is one small file with no dependencies: about 2.1 KB compressed.
 
 ```sh
 npm install wobbui
@@ -121,8 +121,10 @@ shown again, by the same function or another, on its own or inside new HTML. Its
 so they keep updating as long as that's shown. A fragment (`<>…</>`) built outside empties the first time it's added,
 so it shows only once.
 
-Each function child and each mount marks where its HTML starts and ends with an empty comment, `<!---->`. Removing
-that HTML removes whatever lies between the two, so an element that has moved elsewhere since stays where it went.
+Each live spot (a signal or a function given as a child) and each mount marks where its HTML starts and ends with an
+empty comment, `<!---->`. Removing that HTML removes whatever lies between the two, so an element that has moved
+elsewhere since stays where it went. Change what a live spot shows through its signal, not by moving its elements by
+hand: one moved outside its markers stays behind when the spot rebuilds, and anything put between them goes with it.
 
 A list works the same way: `{() => names.get().map((name) => <li>{name}</li>)}` builds the list again whenever `names`
 changes, which suits short lists.
@@ -238,9 +240,9 @@ through the `development` export condition.
 ### `mount(parent, build)`
 
 Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which removes it and stops everything live
-in it; running it again does nothing. An element another mount or a function child has taken since stays where it
-went, though its live parts stop with the rest. Started while other HTML is built, it's also unmounted with that HTML.
-If `build` or adding the HTML throws, nothing is added, and whatever it started stops.
+in it; running it again does nothing. An element another mount or a live spot has taken since stays where it went,
+but the live spots this mount built inside it stop, and empty. Started while other HTML is built, it's also unmounted
+with that HTML. If `build` or adding the HTML throws, nothing is added, and whatever it started stops.
 
 ### Types
 

@@ -15,6 +15,21 @@ test("a signal child changes its text in place", () => {
   assert.equal(text?.textContent, "2", "the same text node shows the new count");
 });
 
+test("live spots keep updating after the page's text is normalized, even one showing empty text", () => {
+  const parent = host();
+  const count = signal(1);
+  const name = signal("");
+  mount(parent, () => (
+    <p>
+      Count: {count}, name: {name}
+    </p>
+  ));
+  parent.normalize();
+  count.set(2);
+  name.set("Ada");
+  assert.equal(parent.textContent, "Count: 2, name: Ada");
+});
+
 test("a function child rebuilds when what it read changes, and stops the HTML it replaced", () => {
   const parent = host();
   const open = signal(true);
