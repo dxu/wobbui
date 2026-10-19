@@ -123,23 +123,59 @@ test("a function child shows its new HTML even when a cleanup in the HTML it rep
   assert.equal(parent.textContent, "Clock", "the spot still follows its signal");
 });
 
-test("a function child keeps the HTML it shows when the HTML replacing it fails to build", () => {
+test("a function child can show again an element it showed before", () => {
   const parent = host();
-  const prices = signal([1, 2]);
+  const user = signal("Ada");
+  const profile = <p>Profile</p>;
+  mount(parent, () => <div>{() => (user.get() === "" ? "Sign in" : profile)}</div>);
+  user.set("Grace");
+  assert.equal(parent.textContent, "Profile");
+});
+
+test("when a function child's new HTML fails to build, the spots it started stop", () => {
+  const parent = host();
+  const page = signal("menu");
+  const volume = signal(1);
+  const heard: number[] = [];
   mount(parent, () => (
-    <ul>
+    <div>
       {() =>
-        prices.get().map((price) => () => {
-          if (price < 0) throw new Error("a price can't be negative");
-          return <li>{price}</li>;
-        })
+        page.get() === "menu"
+          ? "Menu"
+          : [
+              () => {
+                heard.push(volume.get());
+                return "Lab";
+              },
+              () => {
+                throw new Error("the lab broke");
+              },
+            ]
       }
-    </ul>
+    </div>
   ));
-  assert.throws(() => prices.set([3, -1]), /negative/);
-  assert.equal(parent.textContent, "12");
-  prices.set([3, 4]);
-  assert.equal(parent.textContent, "34", "the spot still follows its signal");
+  assert.throws(() => page.set("lab"), /the lab broke/);
+  volume.set(2);
+  assert.deepEqual(heard, [1], "the spot built before the failure no longer listens");
+});
+
+test("a function child shows text again after a rebuild that failed", () => {
+  const parent = host();
+  const status = signal<string | null>("Ready");
+  mount(parent, () => (
+    <p>
+      {() =>
+        status.get() ?? [
+          () => {
+            throw new Error("no status");
+          },
+        ]
+      }
+    </p>
+  ));
+  assert.throws(() => status.set(null), /no status/);
+  status.set("Done");
+  assert.equal(parent.textContent, "Done");
 });
 
 test("a component's own reads don't subscribe the spot that built it", () => {

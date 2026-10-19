@@ -176,10 +176,10 @@ function Clock() {
 A part that rebuilds is cleaned up the same way each time it's rebuilt, and so is a `watch` before each of its runs:
 another `watch` or an `onCleanup` started in a run is stopped before the next.
 
-When something throws, the page stays whole. A part that rebuilds builds its new HTML before it removes the old, so if
-the new HTML can't be built, the old stays; and a cleanup that throws as the old HTML goes doesn't stop the new from
-showing. A `watch` whose cleanup throws still runs. Either way, the error reaches the code that changed the signal, as
-`set` says.
+When something throws, wobbui keeps going. A cleanup that throws as old HTML goes doesn't stop the new HTML from
+showing, and a `watch` whose cleanup throws still runs. New HTML that throws while it's built shows nothing until its
+part is rebuilt, and what it started stops. Either way, the error reaches the code that changed the signal, as `set`
+says.
 
 Outside of building, `watch` and `mount` hand you `stop` and `unmount` to call yourself. A live value outside any
 `mount` or `watch` is an error, since nothing would ever stop it. With [wobbree](https://github.com/dxu/wobbree), tie
@@ -211,9 +211,9 @@ Returns a `Signal<T>`:
 
 Runs `run` now, and again whenever a signal it read the last time changes. Returns `stop`. Started while HTML is built,
 it also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped before
-the next run; one that throws doesn't stop the next run, and its error is rethrown after it. A run that changes a
-signal it read runs once more afterwards, so the last run sees the settled value; one that keeps changing it stops with
-an error after 100 runs. If the first run throws, the watch is stopped.
+the next run; a cleanup that throws doesn't stop the next run, and its error is rethrown after it. A run that changes a
+signal it read runs once more afterwards, even if it threw, so the last run sees the settled value; one that keeps
+changing it stops with an error after 100 runs. If the first run throws, the watch is stopped.
 
 ### `onCleanup(cleanup)`
 

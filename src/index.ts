@@ -34,18 +34,26 @@ class Watcher {
       return;
     }
     this.#running = true;
+    // A run that throws still gets the run it asked for, so the last run sees the last value; the first error is
+    // rethrown after.
+    let failure: { error: unknown } | undefined;
     try {
       let runs = 0;
       do {
         if (++runs > MAX_RUNS) throw new Error("wobbui: a watcher kept changing a signal it reads.");
         this.#again = false;
         this.#unsubscribe();
-        track(this, this.#run);
+        try {
+          track(this, this.#run);
+        } catch (error) {
+          failure ??= { error };
+        }
       } while (this.#again && !this.#stopped);
     } finally {
       this.#running = false;
       this.#again = false;
     }
+    if (failure !== undefined) throw failure.error;
   }
 
   subscribe(watchers: Set<Watcher>): void {
@@ -214,10 +222,22 @@ function bind(run: () => void, onStop?: () => void): () => void {
   try {
     watcher.run();
   } catch (error) {
-    stop();
-    throw error;
+    rethrowAfter(error, stop);
   }
   return stop;
+}
+
+/**
+ * Runs `cleanup` after `error` stopped something, then rethrows `error`. An error from `cleanup` is dropped: the first
+ * error says what went wrong, as `set` rethrows only the first.
+ */
+function rethrowAfter(error: unknown, cleanup: () => void): never {
+  try {
+    cleanup();
+  } catch {
+    // Dropped: the first error is the one rethrown.
+  }
+  throw error;
 }
 
 /** Calls `act` for each item. If one throws, the rest still run, and the first error is rethrown. */
@@ -322,8 +342,7 @@ export function mount(parent: Node, build: () => JSX.Element): () => void {
       for (const node of nodes) node.parentNode?.removeChild(node);
     });
   } catch (error) {
-    unmount();
-    throw error;
+    rethrowAfter(error, unmount);
   }
   building?.onDispose(unmount);
   return unmount;
@@ -442,8 +461,8 @@ function append(parent: Node, child: Child): void {
 
 /**
  * A child that changes. Text changes in place. Anything else is rebuilt whenever a signal the function read changes:
- * the new HTML takes the place of the HTML shown before, which is removed, and its own live spots stop. If the new HTML
- * can't be built, the old HTML stays.
+ * the HTML it showed before is removed, and its own live spots stop. A cleanup of the old HTML that throws doesn't stop
+ * the new HTML from showing. New HTML that throws while it's built shows nothing, and what it started stops.
  */
 function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
@@ -461,8 +480,7 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       try {
         value = within(next, live);
       } catch (error) {
-        next.dispose();
-        throw error;
+        rethrowAfter(error, () => next?.dispose());
       }
     }
     if (text !== undefined && isText(value)) {
@@ -471,12 +489,21 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       return;
     }
     next ??= owner.child();
+    // The old HTML goes first, so an element the new HTML shows again stays on the page. If a cleanup of the old throws,
+    // the new HTML still shows, and the error is rethrown once it does.
+    let failure: { error: unknown } | undefined;
+    try {
+      shown?.dispose();
+    } catch (error) {
+      failure = { error };
+    }
+    shown = next;
+    text = undefined;
     const fragment = document.createDocumentFragment();
     try {
       within(next, () => track(undefined, () => append(fragment, value as Child)));
     } catch (error) {
-      next.dispose();
-      throw error;
+      rethrowAfter(failure === undefined ? error : failure.error, () => next?.dispose());
     }
     text = isText(value) ? (fragment.firstChild as Text) : undefined;
     const nodes = [...fragment.childNodes];
@@ -484,10 +511,7 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       for (const node of nodes) node.parentNode?.removeChild(node);
     });
     end.parentNode?.insertBefore(fragment, end);
-    // The old HTML goes only once the new is in place, so a cleanup of the old that throws can't leave the spot empty.
-    const old = shown;
-    shown = next;
-    old?.dispose();
+    if (failure !== undefined) throw failure.error;
   });
 }
 
