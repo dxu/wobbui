@@ -1,6 +1,6 @@
 {
   "name": "wobbui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A tiny library for building HTML with JSX: real elements built once, and signals that update only what changes.",
   "keywords": [
     "jsx",

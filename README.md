@@ -249,9 +249,10 @@ If `build` or adding the HTML throws, nothing is added, and whatever it started 
 
 ## Performance
 
-Measured on 18 October 2026 in headless Chrome 154 on an Apple M1 Max, while other work kept the machine busy: the same
-small menu (a heading, three links, a slider showing its value, and a number that changes every frame) built with each
-library and bundled minified. Medians of 12 page loads and 4 runs of 3 seconds each.
+Measured on 18 October 2026, on wobbui 0.1.0, in headless Chrome 154 on an Apple M1 Max, while other work kept the
+machine busy: the same small menu (a heading, three links, a slider showing its value, and a number that changes every
+frame) built with each library and bundled minified. Medians of 12 page loads and 4 runs of 3 seconds each. Since then,
+0.2.0's fixes have added 0.14 KB to wobbui's own compressed size; the timings weren't measured again.
 
 | | Compressed | Menu built, CPU slowed 4x | Script per frame, a number changing every frame |
 | --- | --- | --- | --- |
