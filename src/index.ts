@@ -90,7 +90,8 @@ export class Signal<T> {
 
   /** The value now. Inside a live spot or `watch`, also subscribes it to changes. */
   get(): T {
-    watching?.subscribe(this.#watchers);
+    if (watching !== undefined) watching.subscribe(this.#watchers);
+    else if (warnings && building !== undefined && quiet === 0) warnOfRead();
     return this.#value;
   }
 
@@ -130,9 +131,40 @@ export function watch(run: () => void): () => void {
   }, endPass);
 }
 
-/** Runs `read` without subscribing anything to the signals it reads. */
+/**
+ * Runs `read` without subscribing anything to the signals it reads. Reading a signal once on purpose while HTML is
+ * built, such as to start a form from a saved value, goes in here, so it isn't warned about.
+ */
 export function untracked<T>(read: () => T): T {
-  return track(undefined, read);
+  quiet++;
+  try {
+    return track(undefined, read);
+  } finally {
+    quiet--;
+  }
+}
+
+/** How many `untracked` calls are running now: a read inside one is on purpose. */
+let quiet = 0;
+
+/** Whether wobbui warns about likely mistakes. */
+let warnings = false;
+
+/**
+ * Turns wobbui's warnings on or off. They're off unless turned on, and wobbui's development build, which bundlers such
+ * as Vite pick while developing, turns them on.
+ */
+export function setWarnings(on: boolean): void {
+  warnings = on;
+}
+
+/** Warns that a signal was read while HTML was built, outside anything that would read it again. */
+function warnOfRead(): void {
+  console.warn(
+    "wobbui: a signal was read while building HTML, outside a function, so what it shows won't update. " +
+      "Pass the signal itself, as {volume}, or a function, as {() => volume.get()}. " +
+      "If you meant to read it once, wrap the read in untracked().",
+  );
 }
 
 /**
@@ -254,7 +286,7 @@ export function mount(parent: Node, build: () => JSX.Element): () => void {
   const scope = new Scope();
   const unmount = () => scope.dispose();
   try {
-    const html = within(scope, () => untracked(build));
+    const html = within(scope, () => track(undefined, build));
     const nodes = html instanceof DocumentFragment ? [...html.childNodes] : [html];
     parent.appendChild(html);
     scope.onDispose(() => {
@@ -272,7 +304,7 @@ type Component = (props: Record<string, unknown>) => JSX.Element;
 
 /** What JSX compiles to: builds an element, or calls a component, which runs once and subscribes nothing. */
 export function jsx(type: string | Component, props: Record<string, unknown>): JSX.Element {
-  if (typeof type === "function") return untracked(() => type(props));
+  if (typeof type === "function") return track(undefined, () => type(props));
   const element = document.createElement(type);
   const later: string[] = [];
   for (const name in props) {
@@ -405,7 +437,7 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
     shown?.dispose();
     shown = next;
     const fragment = document.createDocumentFragment();
-    within(next, () => untracked(() => append(fragment, value as Child)));
+    within(next, () => track(undefined, () => append(fragment, value as Child)));
     text = isText(value) ? (fragment.firstChild as Text) : undefined;
     const nodes = [...fragment.childNodes];
     next.onDispose(() => {

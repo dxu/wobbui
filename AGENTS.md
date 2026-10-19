@@ -4,8 +4,9 @@ wobbui is a tiny library for building HTML with JSX: real elements built once, a
 changes. Its value is being small, fast and easy to read; every change protects all three.
 
 - The library is one file, `src/index.ts`, short enough to read in one sitting; `src/jsx-runtime.ts` only re-exports
-  what the JSX compiler imports. A piece belongs in it only when most apps that use it need it; what one app chooses,
-  such as its components, its look or its layout, stays in that app, as the README's examples show.
+  what the JSX compiler imports, and `src/development.ts` only turns the warnings on. A piece belongs in it only when
+  most apps that use it need it; what one app chooses, such as its components, its look or its layout, stays in that
+  app, as the README's examples show.
 - No dependencies and no compiler of its own: JSX compiles with TypeScript's or Vite's own transform.
 - Nothing runs while no signal changes, and updating a live spot does no more work than writing the DOM by hand would.
 - Every behavior has a test that calls the public API and checks what a user can observe (`test/`, Node's test runner

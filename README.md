@@ -10,7 +10,7 @@ doesn't change costs nothing after it's built, and a number that changes every f
 - **`mount` returns `unmount`,** which removes the HTML and stops everything live in it, including whatever was started
   while it was built.
 
-It is one small file with no dependencies: about 1.7 KB compressed.
+It is one small file with no dependencies: about 1.9 KB compressed.
 
 ```sh
 npm install wobbui
@@ -96,7 +96,11 @@ A spot is live when you pass the signal itself, or a function that reads signals
 <span>{volume.get()}</span>               // read once, never updates
 ```
 
-That last line is the one rule to remember: everything else is built once and never looked at again.
+That last line is the one rule to remember: everything else is built once and never looked at again. While you
+develop, wobbui warns about it: a signal read while HTML is built, outside a function, logs a warning in the console
+that points at the line. Read once on purpose, such as to start a form from a saved value, inside `untracked`:
+`signal(untracked(() => saved.get()))`. Bundlers such as Vite pick wobbui's development build while developing, which
+has the warnings on; a production build leaves them off. `setWarnings(true)` turns them on anywhere else.
 
 A function child can return HTML. When a signal it read changes, the HTML it showed is removed, the live spots inside
 it stop, and it's built again:
@@ -212,7 +216,13 @@ called in runs again or stops. It only works inside `mount` or `watch`.
 
 ### `untracked(read)`
 
-Runs `read` and returns what it returns, without subscribing anything to the signals it reads.
+Runs `read` and returns what it returns, without subscribing anything to the signals it reads. A read inside it is on
+purpose, so it isn't warned about.
+
+### `setWarnings(on)`
+
+Turns the warnings on or off. They're off, except in wobbui's development build, which bundlers pick while developing
+through the `development` export condition.
 
 ### `mount(parent, build)`
 
@@ -247,7 +257,8 @@ changing runs no script at all: every library measured 0 ms a second.
 ## Design
 
 - One file, [`src/index.ts`](src/index.ts), short enough to read in one sitting.
-  [`src/jsx-runtime.ts`](src/jsx-runtime.ts) only re-exports what the JSX compiler imports.
+  [`src/jsx-runtime.ts`](src/jsx-runtime.ts) only re-exports what the JSX compiler imports, and
+  [`src/development.ts`](src/development.ts), the development build, only turns the warnings on.
 - No compiler of its own: TypeScript's or Vite's JSX transform calls `jsx()`, which makes the element there and then.
 - Updates are synchronous: `set` returns once everything that read the signal has run.
 - The names and types are the DOM's own, so what you know about the DOM applies, and TypeScript checks every property.
