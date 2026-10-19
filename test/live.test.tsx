@@ -117,10 +117,42 @@ test("a function child shows its new HTML even when a cleanup in the HTML it rep
   const parent = host();
   const tab = signal("clock");
   mount(parent, () => <div>{() => (tab.get() === "clock" ? <Clock /> : <p>Settings</p>)}</div>);
-  assert.throws(() => tab.set("settings"), /already cleared/, "the error still reaches the code that set the signal");
+  assert.throws(() => tab.set("settings"), /already removed/, "the error still reaches the code that set the signal");
   assert.equal(parent.textContent, "Settings");
   tab.set("clock");
   assert.equal(parent.textContent, "Clock", "the spot still follows its signal");
+});
+
+test("a function child keeps the HTML it shows when the function throws", () => {
+  const parent = host();
+  const tab = signal("menu");
+  mount(parent, () => (
+    <div>
+      {() => {
+        if (tab.get() === "lab") throw new Error("the lab broke");
+        return <p>Menu</p>;
+      }}
+    </div>
+  ));
+  assert.throws(() => tab.set("lab"), /the lab broke/);
+  assert.equal(parent.textContent, "Menu");
+});
+
+test("if a function child throws and its cleanup throws too, the function's error is the one thrown", () => {
+  const parent = host();
+  const tab = signal("menu");
+  mount(parent, () => (
+    <div>
+      {() => {
+        if (tab.get() === "menu") return "Menu";
+        onCleanup(() => {
+          throw new Error("the cleanup failed");
+        });
+        throw new Error("the lab broke");
+      }}
+    </div>
+  ));
+  assert.throws(() => tab.set("lab"), /the lab broke/);
 });
 
 test("a function child can show again an element it showed before", () => {
@@ -197,10 +229,10 @@ test("a live value outside mount says where it belongs", () => {
   assert.throws(() => <p>{signal(1)}</p>, /mount/);
 });
 
-/** A component whose cleanup throws, as one that clears its timer twice might. */
+/** A component whose cleanup throws, as one removing an element that's already gone would. */
 function Clock() {
   onCleanup(() => {
-    throw new Error("the timer was already cleared");
+    throw new Error("the element was already removed");
   });
   return <p>Clock</p>;
 }

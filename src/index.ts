@@ -34,13 +34,16 @@ class Watcher {
       return;
     }
     this.#running = true;
-    // A run that throws still gets the run it asked for, so the last run sees the last value; the first error is
-    // rethrown after.
+    // A run that throws still gets the run it asked for, so the last run sees the last value. The first error is
+    // rethrown after, even when the runs never settle: it says more than running out of runs does.
     let failure: { error: unknown } | undefined;
     try {
       let runs = 0;
       do {
-        if (++runs > MAX_RUNS) throw new Error("wobbui: a watcher kept changing a signal it reads.");
+        if (++runs > MAX_RUNS) {
+          failure ??= { error: new Error("wobbui: a watcher kept changing a signal it reads.") };
+          break;
+        }
         this.#again = false;
         this.#unsubscribe();
         try {
@@ -462,7 +465,8 @@ function append(parent: Node, child: Child): void {
 /**
  * A child that changes. Text changes in place. Anything else is rebuilt whenever a signal the function read changes:
  * the HTML it showed before is removed, and its own live spots stop. A cleanup of the old HTML that throws doesn't stop
- * the new HTML from showing. New HTML that throws while it's built shows nothing, and what it started stops.
+ * the new HTML from showing. If the function throws, the old HTML stays; if a function child it returns throws on its
+ * first run, the spot shows nothing until the next change. Either way, what the failed HTML started stops.
  */
 function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
@@ -489,8 +493,8 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       return;
     }
     next ??= owner.child();
-    // The old HTML goes first, so an element the new HTML shows again stays on the page. If a cleanup of the old throws,
-    // the new HTML still shows, and the error is rethrown once it does.
+    // The old HTML goes before the value is added, so an element the function returns again stays on the page. If a
+    // cleanup of the old throws, the new HTML still shows, and the error is rethrown once it does.
     let failure: { error: unknown } | undefined;
     try {
       shown?.dispose();

@@ -152,6 +152,46 @@ test("a watch whose cleanup throws still runs once more when it changes a signal
   assert.deepEqual(heard, [5, 15, 10], "the last run sees the settled value");
 });
 
+test("a run that throws after changing a signal it reads still runs once more", () => {
+  const volume = signal(5);
+  const heard: number[] = [];
+  watch(() => {
+    const value = volume.get();
+    heard.push(value);
+    if (value > 10) {
+      volume.set(10);
+      throw new Error("too loud");
+    }
+  });
+  assert.throws(() => volume.set(15), /too loud/);
+  assert.deepEqual(heard, [5, 15, 10], "the last run sees the settled value");
+});
+
+test("a watch that throws and never settles rethrows its first error", () => {
+  const count = signal(0);
+  assert.throws(
+    () =>
+      watch(() => {
+        count.set(count.get() + 1);
+        throw new Error("bad input");
+      }),
+    /bad input/,
+  );
+});
+
+test("if a watch's first run throws and its cleanup throws too, the run's error is the one thrown", () => {
+  assert.throws(
+    () =>
+      watch(() => {
+        onCleanup(() => {
+          throw new Error("the cleanup failed");
+        });
+        throw new Error("the run failed");
+      }),
+    /the run failed/,
+  );
+});
+
 test("when a cleanup and the run after it both throw, the cleanup's error, the first, is rethrown", () => {
   const volume = signal(1);
   watch(() => {

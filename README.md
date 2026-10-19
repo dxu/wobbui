@@ -177,9 +177,9 @@ A part that rebuilds is cleaned up the same way each time it's rebuilt, and so i
 another `watch` or an `onCleanup` started in a run is stopped before the next.
 
 When something throws, wobbui keeps going. A cleanup that throws as old HTML goes doesn't stop the new HTML from
-showing, and a `watch` whose cleanup throws still runs. New HTML that throws while it's built shows nothing until its
-part is rebuilt, and what it started stops. Either way, the error reaches the code that changed the signal, as `set`
-says.
+showing, and a `watch` whose cleanup throws still runs. If a part's function throws, the part keeps the HTML it
+showed; if a function child it returns throws on its first run, the part shows nothing until its signal changes again.
+Either way, what the failed HTML started stops, and the error reaches the code that changed the signal, as `set` says.
 
 Outside of building, `watch` and `mount` hand you `stop` and `unmount` to call yourself. A live value outside any
 `mount` or `watch` is an error, since nothing would ever stop it. With [wobbree](https://github.com/dxu/wobbree), tie
