@@ -19,3 +19,10 @@ export function host(): HTMLElement {
 export function fire(target: EventTarget, type: string): void {
   target.dispatchEvent(new browser.Event(type) as unknown as Event);
 }
+
+/** Presses `key` on `target`. Returns whether a handler prevented the browser's default action. */
+export function press(target: EventTarget, key: string): boolean {
+  const event = new browser.KeyboardEvent("keydown", { key, cancelable: true }) as unknown as KeyboardEvent;
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}

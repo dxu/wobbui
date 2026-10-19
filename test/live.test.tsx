@@ -1,7 +1,7 @@
 import { host } from "./dom.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mount, signal } from "wobbui";
+import { mount, signal, type Signal } from "wobbui";
 
 test("a signal child changes its text in place", () => {
   const parent = host();
@@ -59,6 +59,39 @@ test("a function that computes a property updates when what it read changes", ()
   mount(parent, () => <button className={() => (selected.get() ? "font-bold" : "")}>Easy</button>);
   selected.set(true);
   assert.equal(parent.querySelector("button")?.className, "font-bold");
+});
+
+test("a live property given null is cleared", () => {
+  const parent = host();
+  const style = signal<string | null>("font-bold");
+  const tip = signal<string | null>("Saves your changes");
+  const text = signal<string | null>("Ada");
+  mount(parent, () => (
+    <input
+      className={style as unknown as Signal<string>}
+      title={tip as unknown as Signal<string>}
+      value={text as unknown as Signal<string>}
+    />
+  ));
+  const input = parent.querySelector("input");
+  assert.ok(input);
+  style.set(null);
+  tip.set(null);
+  text.set(null);
+  assert.equal(input.getAttribute("class"), null);
+  assert.equal(input.getAttribute("title"), null);
+  assert.equal(input.value, "");
+});
+
+test("a live aria- attribute follows its signal", () => {
+  const parent = host();
+  const open = signal(false);
+  mount(parent, () => <button aria-expanded={open}>Details</button>);
+  const button = parent.querySelector("button");
+  assert.ok(button);
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+  open.set(true);
+  assert.equal(button.getAttribute("aria-expanded"), "true");
 });
 
 test("a list inside a function is rebuilt whenever its signal changes", () => {

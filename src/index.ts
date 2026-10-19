@@ -11,11 +11,16 @@
 
 // Signals ------------------------------------------------------------------------------------------------------------
 
+/** How many times in a row a watcher may change a signal it reads before wobbui gives up on it settling. */
+const MAX_RUNS = 100;
+
 /** Runs a function again whenever a signal it read the last time changes, until it's stopped. */
 class Watcher {
   readonly #run: () => void;
   readonly #sources = new Set<Set<Watcher>>();
   #stopped = false;
+  #running = false;
+  #again = false;
 
   constructor(run: () => void) {
     this.#run = run;
@@ -23,8 +28,24 @@ class Watcher {
 
   run(): void {
     if (this.#stopped) return;
-    this.#unsubscribe();
-    track(this, this.#run);
+    // A run that changes a signal it read asks for one more run, after this one, so the last run sees the last value.
+    if (this.#running) {
+      this.#again = true;
+      return;
+    }
+    this.#running = true;
+    try {
+      let runs = 0;
+      do {
+        if (++runs > MAX_RUNS) throw new Error("wobbui: a watcher kept changing a signal it reads.");
+        this.#again = false;
+        this.#unsubscribe();
+        track(this, this.#run);
+      } while (this.#again && !this.#stopped);
+    } finally {
+      this.#running = false;
+      this.#again = false;
+    }
   }
 
   subscribe(watchers: Set<Watcher>): void {
@@ -73,12 +94,15 @@ export class Signal<T> {
     return this.#value;
   }
 
-  /** Changes the value and, if it's a different value, runs everything that read it, before returning. */
+  /**
+   * Changes the value and, if it's a different value, runs everything that read it, before returning. If one of them
+   * throws, the rest still run, and the first error is rethrown.
+   */
   set(value: T): void {
     if (Object.is(value, this.#value)) return;
     this.#value = value;
     // A copy: a watcher that runs leaves the set and joins it again, and a set's loop would reach it a second time.
-    for (const watcher of Array.from(this.#watchers)) watcher.run();
+    forEach(Array.from(this.#watchers), (watcher) => watcher.run());
   }
 }
 
@@ -89,19 +113,64 @@ export function signal<T>(value: T): Signal<T> {
 
 /**
  * Runs `run` now, and again whenever a signal it read changes. Returns `stop`. Called while HTML is being built, it
- * also stops when that HTML is removed.
+ * also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped
+ * before the next run.
  */
 export function watch(run: () => void): () => void {
-  const watcher = new Watcher(run);
-  const stop = () => watcher.stop();
-  building?.onDispose(stop);
-  watcher.run();
-  return stop;
+  const owner = building;
+  let pass: Scope | undefined;
+  const endPass = () => {
+    pass?.dispose();
+    pass = undefined;
+  };
+  return bind(() => {
+    endPass();
+    pass = owner === undefined ? new Scope() : owner.child();
+    within(pass, run);
+  }, endPass);
 }
 
 /** Runs `read` without subscribing anything to the signals it reads. */
 export function untracked<T>(read: () => T): T {
   return track(undefined, read);
+}
+
+/**
+ * Runs `cleanup` when what's being built now goes away: when its HTML is unmounted or rebuilt, or when the `watch` it's
+ * called in runs again or stops. Use it for what wobbui doesn't know about, such as a timer or a listener on `window`.
+ */
+export function onCleanup(cleanup: () => void): void {
+  currentScope("onCleanup").onDispose(cleanup);
+}
+
+/** Starts a watcher for `run`, stopped with the HTML being built, if any. Returns `stop`, which also runs `onStop`. */
+function bind(run: () => void, onStop?: () => void): () => void {
+  const watcher = new Watcher(run);
+  const stop = () => {
+    watcher.stop();
+    onStop?.();
+  };
+  building?.onDispose(stop);
+  try {
+    watcher.run();
+  } catch (error) {
+    stop();
+    throw error;
+  }
+  return stop;
+}
+
+/** Calls `act` for each item. If one throws, the rest still run, and the first error is rethrown. */
+function forEach<T>(items: readonly T[], act: (item: T) => void): void {
+  let failure: { error: unknown } | undefined;
+  for (const item of items) {
+    try {
+      act(item);
+    } catch (error) {
+      failure ??= { error };
+    }
+  }
+  if (failure !== undefined) throw failure.error;
 }
 
 // Scopes -------------------------------------------------------------------------------------------------------------
@@ -133,20 +202,14 @@ class Scope {
     const cleanups = this.#cleanups;
     if (cleanups === undefined) return;
     this.#cleanups = undefined;
-    let failure: { error: unknown } | undefined;
     const newestLast = Array.from(cleanups);
-    for (let cleanup = newestLast.pop(); cleanup !== undefined; cleanup = newestLast.pop()) {
-      try {
-        cleanup();
-      } catch (error) {
-        failure ??= { error };
-      }
-    }
-    if (failure !== undefined) throw failure.error;
+    const newestFirst: (() => void)[] = [];
+    for (let cleanup = newestLast.pop(); cleanup !== undefined; cleanup = newestLast.pop()) newestFirst.push(cleanup);
+    forEach(newestFirst, (cleanup) => cleanup());
   }
 }
 
-/** The scope of the HTML being built now, if any. */
+/** The scope of what's being built now: HTML inside `mount`, a live spot rebuilding, or a run of `watch`. */
 let building: Scope | undefined;
 
 function within<T>(scope: Scope, make: () => T): T {
@@ -157,6 +220,11 @@ function within<T>(scope: Scope, make: () => T): T {
   } finally {
     building = outer;
   }
+}
+
+function currentScope(what: string): Scope {
+  if (building !== undefined) return building;
+  throw new Error(`wobbui: ${what} only works inside mount() or watch(), which can stop it.`);
 }
 
 // Building -----------------------------------------------------------------------------------------------------------
@@ -170,7 +238,7 @@ export type Child =
   | boolean
   | null
   | undefined
-  | Signal<unknown>
+  | Signal<Child>
   | (() => Child)
   | readonly Child[];
 
@@ -185,18 +253,17 @@ export type Live<T> = T | Signal<T> | (() => T);
 export function mount(parent: Node, build: () => JSX.Element): () => void {
   const scope = new Scope();
   const unmount = () => scope.dispose();
-  let html: JSX.Element;
   try {
-    html = within(scope, () => untracked(build));
+    const html = within(scope, () => untracked(build));
+    const nodes = html instanceof DocumentFragment ? [...html.childNodes] : [html];
+    parent.appendChild(html);
+    scope.onDispose(() => {
+      for (const node of nodes) node.parentNode?.removeChild(node);
+    });
   } catch (error) {
     unmount();
     throw error;
   }
-  const nodes = html instanceof DocumentFragment ? [...html.childNodes] : [html];
-  parent.appendChild(html);
-  scope.onDispose(() => {
-    for (const node of nodes) node.parentNode?.removeChild(node);
-  });
   building?.onDispose(unmount);
   return unmount;
 }
@@ -237,24 +304,50 @@ function setProperty(element: HTMLElement, name: string, value: unknown): void {
   if (name.startsWith("on")) {
     (element as unknown as Record<string, unknown>)[name] = value;
   } else if (isLive(value)) {
-    currentScope();
-    watch(() => assign(element, name, latest(value)));
+    currentScope("A live value");
+    bind(() => assign(element, name, latest(value)));
   } else {
     assign(element, name, value);
   }
 }
 
-/** Sets a DOM property by its own name, or an attribute when the name has a dash or isn't a property. */
-function assign(element: HTMLElement, name: string, value: unknown): void {
-  if (name === "style") element.style.cssText = value === null || value === undefined ? "" : String(value);
-  else if (!name.includes("-") && name in element) (element as unknown as Record<string, unknown>)[name] = value;
-  else if (value === null || value === undefined || value === false) element.removeAttribute(name);
-  else element.setAttribute(name, value === true ? "" : String(value));
-}
+/** The attribute a property reflects, where its name isn't the property's own. */
+const ATTRIBUTE_OF = new Map([
+  ["className", "class"],
+  ["htmlFor", "for"],
+]);
 
-function currentScope(): Scope {
-  if (building === undefined) throw new Error("wobbui: a live value only works in HTML built by mount().");
-  return building;
+/** What a property goes back to when it's given `null` or `undefined`, where removing its attribute wouldn't do it. */
+const EMPTY = new Map<string, unknown>([
+  ["value", ""],
+  ["checked", false],
+  ["indeterminate", false],
+  ["textContent", ""],
+]);
+
+/**
+ * Sets a DOM property by its own name, or an attribute when the name has a dash or isn't a property. `null` and
+ * `undefined` clear it. An `aria-` or `data-` attribute writes `true` and `false` out, as ARIA reads them.
+ */
+function assign(element: HTMLElement, name: string, value: unknown): void {
+  const properties = element as unknown as Record<string, unknown>;
+  if (name === "style") {
+    element.style.cssText = value === null || value === undefined ? "" : String(value);
+  } else if (name.includes("-") || !(name in element)) {
+    const dashed = name.includes("-");
+    if (value === null || value === undefined || (value === false && !dashed)) element.removeAttribute(name);
+    else element.setAttribute(name, value === true && !dashed ? "" : String(value));
+  } else if (value === null || value === undefined) {
+    if (EMPTY.has(name)) properties[name] = EMPTY.get(name);
+    else element.removeAttribute(ATTRIBUTE_OF.get(name) ?? name);
+  } else {
+    try {
+      properties[name] = value;
+    } catch {
+      // A property that can only be read, such as an input's `list`: its attribute sets it.
+      element.setAttribute(name, String(value));
+    }
+  }
 }
 
 function isLive(value: unknown): value is Signal<unknown> | (() => unknown) {
@@ -284,14 +377,25 @@ function append(parent: Node, child: Child): void {
  * the HTML it showed before is removed, and its own live spots stop.
  */
 function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
-  const owner = currentScope();
+  const owner = currentScope("A live value");
   const end = parent.appendChild(document.createTextNode(""));
   let text: Text | undefined;
   let shown: Scope | undefined;
-  watch(() => {
+  bind(() => {
     // HTML a function builds while it's read belongs to `next`, so rebuilding frees it.
     let next: Scope | undefined;
-    const value = typeof live === "function" ? within((next = owner.child()), live) : live.get();
+    let value: unknown;
+    if (live instanceof Signal) {
+      value = live.get();
+    } else {
+      next = owner.child();
+      try {
+        value = within(next, live);
+      } catch (error) {
+        next.dispose();
+        throw error;
+      }
+    }
     if (text !== undefined && isText(value)) {
       text.data = String(value);
       next?.dispose();
@@ -319,17 +423,24 @@ function isText(value: unknown): value is string | number | bigint {
 
 type IfEquals<X, Y, Then, Else> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? Then : Else;
 
-/** The properties of `E` JSX can set: not read-only, not methods, not handlers, and not `style`, which takes text. */
+/**
+ * The properties of `E` JSX can set: named ones only (a form's index signature would accept anything), not read-only,
+ * not methods, not handlers, and not `style`, which takes text.
+ */
 type Settable<E> = {
-  [K in keyof E]-?: K extends `on${string}` | "style"
+  [K in keyof E]-?: string extends K
     ? never
-    : E[K] extends (...args: never[]) => unknown
+    : number extends K
       ? never
-      : IfEquals<{ [P in K]: E[K] }, { -readonly [P in K]: E[K] }, K, never>;
+      : K extends `on${string}` | "style"
+        ? never
+        : E[K] extends (...args: never[]) => unknown
+          ? never
+          : IfEquals<{ [P in K]: E[K] }, { -readonly [P in K]: E[K] }, K, never>;
 }[keyof E];
 
 /** The event an element's `on…` property hands its handler. */
-type EventOf<Handler> = Handler extends ((this: never, event: infer E) => unknown) | null ? E : Event;
+type EventOf<Handler> = NonNullable<Handler> extends (this: never, event: infer E) => unknown ? E : Event;
 
 /** What JSX takes for an element `E`. A text property takes a number too, as in `min={0}`. */
 export type Props<E extends HTMLElement> = {

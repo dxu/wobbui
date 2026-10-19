@@ -10,7 +10,7 @@ doesn't change costs nothing after it's built, and a number that changes every f
 - **`mount` returns `unmount`,** which removes the HTML and stops everything live in it, including whatever was started
   while it was built.
 
-It is one small file with no dependencies: about 1.3 KB compressed.
+It is one small file with no dependencies: about 1.7 KB compressed.
 
 ```sh
 npm install wobbui
@@ -23,7 +23,8 @@ Then tell TypeScript where JSX comes from. Vite reads the same setting, so it ne
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "wobbui"
+    "jsxImportSource": "wobbui",
+    "moduleResolution": "bundler" // or "nodenext": the older "node" can't find wobbui/jsx-runtime
   }
 }
 ```
@@ -53,9 +54,13 @@ const unmount = mount(document.body, () => (
 - **Properties are the element's own DOM properties,** by their DOM names: `className`, `htmlFor`, `value`, `disabled`,
   and lowercase event handlers such as `onclick` and `oninput`. Their types come from TypeScript's DOM types, so a
   misspelled property or a value of the wrong type is a type error. A text property takes a number too: `min={0}`.
-- **A name with a dash is an attribute,** such as `data-id` or `aria-label`.
+- **A name with a dash is an attribute,** such as `data-id` or `aria-label`. It writes `true` and `false` out, as
+  `aria-expanded={open}` needs.
+- **`null` or `undefined` clears a property,** so an optional prop passed straight through leaves nothing behind.
 - **`style` takes text:** `style="width: 8rem"`.
-- **`ref` gets the element** once it's built, children and all: `<input ref={(input) => input.focus()} />`.
+- **`ref` gets the element** once it's built, children and all, before it's on the page:
+  `<canvas ref={(canvas) => (context = canvas.getContext("2d"))} />`. To focus an input, keep it this way and call
+  `focus()` after `mount`.
 - **An input's value is set last,** after its other properties and its children, so a select already has its options
   and a range input its `min` and `max`.
 
@@ -107,6 +112,9 @@ mount(document.body, () => (
 ));
 ```
 
+Build the HTML inside the function, as here. An element built outside it can be shown again, but a fragment
+(`<>…</>`) empties the first time it's added, so one built outside shows only once.
+
 A list works the same way: `{() => names.get().map((name) => <li>{name}</li>)}` builds the list again whenever `names`
 changes, which suits short lists.
 
@@ -145,21 +153,28 @@ mount(document.body, () => <Slider label="Volume" value={volume} max={10} />);
 
 ## Lifetimes
 
-`mount` returns `unmount`, which removes the HTML and stops every live spot in it. Whatever was started while the HTML
+`mount` returns `unmount`, which removes the HTML and stops every live spot in it. What wobbui started while the HTML
 was built goes with it: a `watch` started in a component stops, and a `mount` started in a component, such as a dialog
-mounted on `document.body`, is unmounted.
+mounted on `document.body`, is unmounted. For what wobbui doesn't know about, such as a timer or a listener on
+`window`, `onCleanup` runs a function when the HTML goes:
 
 ```tsx
-function SaveButton() {
-  const saved = signal(false);
-  mount(document.body, () => <p className="fixed bottom-4">{() => (saved.get() ? "Saved" : "")}</p>);
-  return <button onclick={() => saved.set(true)}>Save</button>;
+import { onCleanup, signal } from "wobbui";
+
+function Clock() {
+  const now = signal(new Date().toLocaleTimeString());
+  const timer = setInterval(() => now.set(new Date().toLocaleTimeString()), 1000);
+  onCleanup(() => clearInterval(timer));
+  return <p>{now}</p>;
 }
 ```
 
+A part that rebuilds is cleaned up the same way each time it's rebuilt, and so is a `watch` before each of its runs:
+another `watch` or an `onCleanup` started in a run is stopped before the next.
+
 Outside of building, `watch` and `mount` hand you `stop` and `unmount` to call yourself. A live value outside any
-`mount` is an error, since nothing would ever stop it. With [wobbree](https://github.com/dxu/wobbree), tie the HTML to
-an owner: `owner.onDispose(mount(parent, () => <Menu />))`.
+`mount` or `watch` is an error, since nothing would ever stop it. With [wobbree](https://github.com/dxu/wobbree), tie
+the HTML to an owner: `owner.onDispose(mount(parent, () => <Menu />))`.
 
 ## Suggested standards
 
@@ -181,12 +196,19 @@ Returns a `Signal<T>`:
 | Member | What it does |
 | --- | --- |
 | `get()` | The value now. Read in a live spot or in `watch`, it also subscribes that spot to changes. |
-| `set(value)` | Changes the value. If the new one is different (by `Object.is`), everything that read it runs again before `set` returns. |
+| `set(value)` | Changes the value. If the new one is different (by `Object.is`), everything that read it runs again before `set` returns. If one of them throws, the rest still run, and the first error is rethrown. |
 
 ### `watch(run)`
 
 Runs `run` now, and again whenever a signal it read the last time changes. Returns `stop`. Started while HTML is built,
-it also stops when that HTML is removed.
+it also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped before
+the next run. A run that changes a signal it read runs once more afterwards, so the last run sees the settled value;
+one that keeps changing it stops with an error after 100 runs. If the first run throws, the watch is stopped.
+
+### `onCleanup(cleanup)`
+
+Runs `cleanup` when what's being built now goes away: when its HTML is unmounted or rebuilt, or when the `watch` it's
+called in runs again or stops. It only works inside `mount` or `watch`.
 
 ### `untracked(read)`
 
@@ -196,7 +218,7 @@ Runs `read` and returns what it returns, without subscribing anything to the sig
 
 Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which removes it and stops everything live
 in it; running it again does nothing. Started while other HTML is built, it's also unmounted with that HTML. If `build`
-throws, nothing is added, and whatever it started stops.
+or adding the HTML throws, nothing is added, and whatever it started stops.
 
 ### Types
 
@@ -211,13 +233,13 @@ library and bundled minified. Medians of 12 page loads and 4 runs of 3 seconds e
 
 | | Compressed | Menu built, CPU slowed 4x | Script per frame, a number changing every frame |
 | --- | --- | --- | --- |
-| **wobbui** | **1.7 KB** | **8.3 ms** | **0.046 ms** |
-| Plain DOM, written by hand | 0.6 KB | 6.1 ms | 0.040 ms |
-| VanJS 1.6 | 1.6 KB | 8.7 ms | 0.075 ms |
-| lit-html 3.3 | 3.6 KB | 12.8 ms | 0.052 ms |
-| Solid 1.9 | 6.1 KB | 11.1 ms | 0.060 ms |
-| Preact 11 | 6.1 KB | 12.0 ms | 0.106 ms |
-| React 19.3 | 69.5 KB | 55.7 ms | 0.167 ms |
+| **wobbui** | **2.0 KB** | **8.8 ms** | **0.049 ms** |
+| Plain DOM, written by hand | 0.6 KB | 5.2 ms | 0.040 ms |
+| VanJS 1.6 | 1.6 KB | 9.5 ms | 0.074 ms |
+| lit-html 3.3 | 3.6 KB | 13.9 ms | 0.047 ms |
+| Solid 1.9 | 6.1 KB | 10.6 ms | 0.056 ms |
+| Preact 11 | 6.1 KB | 12.2 ms | 0.111 ms |
+| React 19.3 | 69.5 KB | 56.5 ms | 0.180 ms |
 
 Sizes are whole bundles, the menu's own code included. A frame lasts 16.7 ms at 60 frames a second. HTML that isn't
 changing runs no script at all: every library measured 0 ms a second.

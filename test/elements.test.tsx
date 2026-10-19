@@ -1,4 +1,4 @@
-import { fire, host } from "./dom.js";
+import { fire, host, press } from "./dom.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mount } from "wobbui";
@@ -58,6 +58,44 @@ test("an event handler gets its element as currentTarget", () => {
   input.value = "hello";
   fire(input, "input");
   assert.equal(typed, "hello");
+});
+
+test("an event handler gets the browser's own event, typed for its element", () => {
+  const parent = host();
+  const keys: string[] = [];
+  mount(parent, () => (
+    <input
+      onkeydown={(event) => {
+        keys.push(event.key);
+        event.preventDefault();
+      }}
+    />
+  ));
+  const input = parent.querySelector("input");
+  assert.ok(input);
+  assert.equal(press(input, "Enter"), true, "the handler could prevent the default");
+  assert.deepEqual(keys, ["Enter"]);
+});
+
+test("a property given undefined is left empty", () => {
+  const parent = host();
+  const hint: string | undefined = undefined;
+  // `as string`: apps without exactOptionalPropertyTypes pass an optional prop's undefined straight through.
+  mount(parent, () => <input placeholder={hint as unknown as string} />);
+  const input = parent.querySelector("input");
+  assert.ok(input);
+  assert.equal(input.placeholder, "");
+  assert.equal(input.getAttribute("placeholder"), null);
+});
+
+test("aria- and data- attributes write true and false out", () => {
+  const parent = host();
+  mount(parent, () => <button aria-expanded={true} aria-pressed={false} data-ready={true} />);
+  const button = parent.querySelector("button");
+  assert.ok(button);
+  assert.equal(button.getAttribute("aria-expanded"), "true");
+  assert.equal(button.getAttribute("aria-pressed"), "false");
+  assert.equal(button.getAttribute("data-ready"), "true");
 });
 
 test("ref gets the element once it's built, children included", () => {
