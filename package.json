@@ -1,0 +1,57 @@
+{
+  "name": "wobbui",
+  "version": "0.0.27",
+  "description": "A tiny library for building HTML with JSX: real elements built once, and signals that update only what changes.",
+  "keywords": [
+    "jsx",
+    "signals",
+    "dom",
+    "ui",
+    "fine-grained",
+    "reactive",
+    "no-virtual-dom"
+  ],
+  "license": "MIT",
+  "author": "dxu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dxu/wobbui.git"
+  },
+  "homepage": "https://github.com/dxu/wobbui#readme",
+  "bugs": "https://github.com/dxu/wobbui/issues",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "default": "./dist/jsx-runtime.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "oxlint",
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test \".test/*.test.js\"",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "happy-dom": "20.14.6",
+    "oxlint": "1.88.0",
+    "typescript": "7.0.2"
+  }
+}
