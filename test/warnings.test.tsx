@@ -2,7 +2,7 @@ import { host } from "./dom.js";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, mock, test, type Mock } from "node:test";
-import { mount, setWarnings, signal, untracked, watch } from "wobbui";
+import { mount, onCleanup, setWarnings, signal, untracked, watch } from "wobbui";
 
 let warn: Mock<typeof console.warn>;
 
@@ -51,6 +51,49 @@ test("the ways a value stays live, or is read on purpose, aren't warned about", 
   parent.querySelector("button")?.click();
   volume.get();
   assert.equal(warn.mock.callCount(), 0);
+});
+
+test("a handler or a cleanup that runs while HTML is still being built isn't warned about", () => {
+  const draft = signal("hello");
+  const saved: string[] = [];
+  mount(host(), () => {
+    const button = (<button onclick={() => saved.push(draft.get())}>Save</button>) as HTMLButtonElement;
+    button.click();
+    const unmountNote = mount(host(), () => {
+      onCleanup(() => saved.push(draft.get()));
+      return <p>Note</p>;
+    });
+    unmountNote();
+    return button;
+  });
+  assert.deepEqual(saved, ["hello", "hello"]);
+  assert.equal(warn.mock.callCount(), 0);
+});
+
+test("a set inside untracked still warns about a mistake in what it rebuilds", () => {
+  const visits = signal(0);
+  const theme = signal("light");
+  function Badge() {
+    return <b>{theme.get()}</b>;
+  }
+  mount(host(), () => <section>{() => visits.get() > 0 && <Badge />}</section>);
+  mount(host(), () => {
+    untracked(() => visits.set(visits.get() + 1));
+    return <p>Visited</p>;
+  });
+  assert.equal(warn.mock.callCount(), 1, "Badge, rebuilt by the set, read the theme once");
+});
+
+test("each signal is warned about once, however often it's misread", () => {
+  const theme = signal("light");
+  mount(host(), () => (
+    <ul>
+      {[1, 2, 3].map(() => (
+        <li>{theme.get()}</li>
+      ))}
+    </ul>
+  ));
+  assert.equal(warn.mock.callCount(), 1);
 });
 
 test("warnings are off until turned on", () => {

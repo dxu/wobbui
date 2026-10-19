@@ -93,6 +93,20 @@ test("onCleanup in a watch runs before the next run, and when it stops", () => {
   assert.deepEqual(log, ["start 1", "clean 1", "start 2", "clean 2"]);
 });
 
+test("a signal read in a watch's onCleanup doesn't make the watch run again", () => {
+  const volume = signal(1);
+  const muted = signal(false);
+  let runs = 0;
+  watch(() => {
+    runs++;
+    volume.get();
+    onCleanup(() => muted.get());
+  });
+  volume.set(2);
+  muted.set(true);
+  assert.equal(runs, 2);
+});
+
 test("set runs every watcher even when one throws, then throws the first error", () => {
   const volume = signal(1);
   const heard: number[] = [];

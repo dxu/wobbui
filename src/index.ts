@@ -91,7 +91,7 @@ export class Signal<T> {
   /** The value now. Inside a live spot or `watch`, also subscribes it to changes. */
   get(): T {
     if (watching !== undefined) watching.subscribe(this.#watchers);
-    else if (warnings && building !== undefined && quiet === 0) warnOfRead();
+    else if (warnings && building !== undefined) warnOfRead(this);
     return this.#value;
   }
 
@@ -132,23 +132,36 @@ export function watch(run: () => void): () => void {
 }
 
 /**
+ * Stands in for a watcher inside `untracked`: the signals read there subscribe nothing, and the reads are on purpose.
+ * Anything that runs a watcher of its own inside, such as a `set` that rebuilds part of the page, sets its own.
+ */
+const QUIET = new Watcher(() => {});
+QUIET.stop();
+
+/**
  * Runs `read` without subscribing anything to the signals it reads. Reading a signal once on purpose while HTML is
  * built, such as to start a form from a saved value, goes in here, so it isn't warned about.
  */
 export function untracked<T>(read: () => T): T {
-  quiet++;
+  return track(QUIET, read);
+}
+
+/** Runs `run` as the page would, outside anything being built or watched: for event handlers and cleanups. */
+function outside<T>(run: () => T): T {
+  const outer = building;
+  building = undefined;
   try {
-    return track(undefined, read);
+    return track(undefined, run);
   } finally {
-    quiet--;
+    building = outer;
   }
 }
 
-/** How many `untracked` calls are running now: a read inside one is on purpose. */
-let quiet = 0;
-
 /** Whether wobbui warns about likely mistakes. */
 let warnings = false;
+
+/** The signals already warned about, so a mistake in a list or in a part rebuilt every frame warns once. */
+const warned = new WeakSet<Signal<unknown>>();
 
 /**
  * Turns wobbui's warnings on or off. They're off unless turned on, and wobbui's development build, which bundlers such
@@ -158,8 +171,10 @@ export function setWarnings(on: boolean): void {
   warnings = on;
 }
 
-/** Warns that a signal was read while HTML was built, outside anything that would read it again. */
-function warnOfRead(): void {
+/** Warns, once per signal, that `source` was read while HTML was built, outside anything that would read it again. */
+function warnOfRead(source: Signal<unknown>): void {
+  if (warned.has(source)) return;
+  warned.add(source);
   console.warn(
     "wobbui: a signal was read while building HTML, outside a function, so what it shows won't update. " +
       "Pass the signal itself, as {volume}, or a function, as {() => volume.get()}. " +
@@ -237,7 +252,8 @@ class Scope {
     const newestLast = Array.from(cleanups);
     const newestFirst: (() => void)[] = [];
     for (let cleanup = newestLast.pop(); cleanup !== undefined; cleanup = newestLast.pop()) newestFirst.push(cleanup);
-    forEach(newestFirst, (cleanup) => cleanup());
+    // Outside the watcher that may be rebuilding, so a signal a cleanup reads doesn't subscribe it.
+    outside(() => forEach(newestFirst, (cleanup) => cleanup()));
   }
 }
 
@@ -334,7 +350,14 @@ export function Fragment(props: { children?: Child }): DocumentFragment {
 
 function setProperty(element: HTMLElement, name: string, value: unknown): void {
   if (name.startsWith("on")) {
-    (element as unknown as Record<string, unknown>)[name] = value;
+    // A handler can run while HTML is still being built, as when building focuses an input, so it runs as the page
+    // would run it: subscribing nothing, and its reads not warned about.
+    (element as unknown as Record<string, unknown>)[name] =
+      typeof value === "function"
+        ? function (this: unknown, ...args: unknown[]) {
+            return outside(() => (value as (...args: unknown[]) => unknown).apply(this, args));
+          }
+        : value;
   } else if (isLive(value)) {
     currentScope("A live value");
     bind(() => assign(element, name, latest(value)));
