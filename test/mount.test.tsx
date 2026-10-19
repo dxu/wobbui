@@ -144,6 +144,26 @@ test("if building throws, nothing is added, and live spots made so far stop", ()
   assert.deepEqual(heard, [5]);
 });
 
+test("unmount leaves an element that another mount has taken since", () => {
+  const first = host();
+  const second = host();
+  const panel = <p>Panel</p>;
+  const unmountFirst = mount(first, () => panel);
+  mount(second, () => panel);
+  unmountFirst();
+  assert.equal(second.textContent, "Panel");
+  assert.equal(first.childNodes.length, 0, "and leaves nothing behind where it was");
+});
+
+test("unmount leaves an element that a later mount in the same parent has taken", () => {
+  const parent = host();
+  const panel = <p>Panel</p>;
+  const unmountFirst = mount(parent, () => panel);
+  mount(parent, () => panel);
+  unmountFirst();
+  assert.equal(parent.textContent, "Panel");
+});
+
 test("if building throws and a cleanup then throws too, the error from building is the one thrown", () => {
   assert.throws(
     () =>

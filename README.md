@@ -116,8 +116,13 @@ mount(document.body, () => (
 ));
 ```
 
-Build the HTML inside the function, as here. An element built outside it can be shown again, but a fragment
-(`<>…</>`) empties the first time it's added, so one built outside shows only once.
+Build the HTML inside the function, as here. An element built outside it, such as in the component around it, can be
+shown again, by the same function or another, on its own or inside new HTML. Its live parts belong to what built it,
+so they keep updating as long as that's shown. A fragment (`<>…</>`) built outside empties the first time it's added,
+so it shows only once.
+
+Each function child and each mount marks where its HTML starts and ends with an empty comment, `<!---->`. Removing
+that HTML removes whatever lies between the two, so an element that has moved elsewhere since stays where it went.
 
 A list works the same way: `{() => names.get().map((name) => <li>{name}</li>)}` builds the list again whenever `names`
 changes, which suits short lists.
@@ -233,8 +238,9 @@ through the `development` export condition.
 ### `mount(parent, build)`
 
 Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which removes it and stops everything live
-in it; running it again does nothing. Started while other HTML is built, it's also unmounted with that HTML. If `build`
-or adding the HTML throws, nothing is added, and whatever it started stops.
+in it; running it again does nothing. An element another mount or a function child has taken since stays where it
+went, though its live parts stop with the rest. Started while other HTML is built, it's also unmounted with that HTML.
+If `build` or adding the HTML throws, nothing is added, and whatever it started stops.
 
 ### Types
 

@@ -9,11 +9,10 @@ test("a signal child changes its text in place", () => {
   mount(parent, () => <p>Count: {count}</p>);
   const paragraph = parent.querySelector("p");
   assert.ok(paragraph);
-  const text = paragraph.childNodes[1];
+  const text = [...paragraph.childNodes].find((node) => node.textContent === "1");
   count.set(2);
   assert.equal(paragraph.textContent, "Count: 2");
-  // Compared with ===: a failed assert.equal would print the whole simulated browser.
-  assert.ok(paragraph.childNodes[1] === text, "the same text node shows the new count");
+  assert.equal(text?.textContent, "2", "the same text node shows the new count");
 });
 
 test("a function child rebuilds when what it read changes, and stops the HTML it replaced", () => {
@@ -162,6 +161,66 @@ test("a function child can show again an element it showed before", () => {
   mount(parent, () => <div>{() => (user.get() === "" ? "Sign in" : profile)}</div>);
   user.set("Grace");
   assert.equal(parent.textContent, "Profile");
+});
+
+test("a function child can show an element it showed before inside its new HTML", () => {
+  const parent = host();
+  const wide = signal(false);
+  const name = signal("Ada");
+  mount(parent, () => {
+    const profile = <p>{name}</p>;
+    return <div>{() => (wide.get() ? <aside>{profile}</aside> : profile)}</div>;
+  });
+  wide.set(true);
+  name.set("Grace");
+  assert.equal(parent.querySelector("aside")?.textContent, "Grace", "it moved, and its live parts still update");
+  wide.set(false);
+  assert.equal(parent.textContent, "Grace", "and it shows on its own again");
+});
+
+test("an element one function child takes from another stays when the other rebuilds", () => {
+  const parent = host();
+  const side = signal("left");
+  const profile = <p>Profile</p>;
+  mount(parent, () => (
+    <div>
+      <section>{() => (side.get() === "left" ? profile : "Empty")}</section>
+      <aside>{() => (side.get() === "right" ? profile : "Empty")}</aside>
+    </div>
+  ));
+  side.set("right");
+  assert.equal(parent.querySelector("aside")?.textContent, "Profile");
+  side.set("left");
+  assert.equal(parent.querySelector("section")?.textContent, "Profile");
+  assert.equal(parent.querySelector("aside")?.textContent, "Empty");
+});
+
+test("an element one function child takes from a sibling stays when the sibling rebuilds", () => {
+  const parent = host();
+  const side = signal("left");
+  const profile = <p>Profile</p>;
+  mount(parent, () => (
+    <div>
+      {() => (side.get() === "left" ? profile : "Empty")}
+      {() => (side.get() === "right" ? profile : "Empty")}
+    </div>
+  ));
+  side.set("right");
+  assert.equal(parent.textContent, "EmptyProfile");
+  side.set("left");
+  assert.equal(parent.textContent, "ProfileEmpty");
+});
+
+test("when a function child rebuilds, a function child it returned goes too, even one that has rebuilt", () => {
+  const parent = host();
+  const page = signal("list");
+  const on = signal(false);
+  mount(parent, () => (
+    <div>{() => (page.get() === "list" ? [() => (on.get() ? <b>On</b> : <i>Off</i>)] : "Done")}</div>
+  ));
+  on.set(true);
+  page.set("done");
+  assert.equal(parent.textContent, "Done");
 });
 
 test("when a function child's new HTML fails to build, the spots it started stop", () => {

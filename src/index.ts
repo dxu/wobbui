@@ -339,16 +339,38 @@ export function mount(parent: Node, build: () => JSX.Element): () => void {
   const unmount = () => scope.dispose();
   try {
     const html = within(scope, () => track(undefined, build));
-    const nodes = html instanceof DocumentFragment ? [...html.childNodes] : [html];
-    parent.appendChild(html);
+    // The HTML is whatever lies between two markers, so unmounting removes what's there then: an element that another
+    // mount or a function child has taken since stays where it went.
+    const start = marker();
+    const end = marker();
+    const added = document.createDocumentFragment();
+    added.appendChild(start);
+    added.appendChild(html);
+    added.appendChild(end);
+    parent.appendChild(added);
     scope.onDispose(() => {
-      for (const node of nodes) node.parentNode?.removeChild(node);
+      clear(start, end);
+      start.remove();
+      end.remove();
     });
   } catch (error) {
     rethrowAfter(error, unmount);
   }
   building?.onDispose(unmount);
   return unmount;
+}
+
+/**
+ * An empty comment marking where some HTML starts or ends. A comment, not text: a document accepts it as a child, and
+ * `normalize()` keeps it, where it removes an empty text node.
+ */
+function marker(): Comment {
+  return document.createComment("");
+}
+
+/** Removes the nodes between `start` and `end`. */
+function clear(start: Node, end: Node): void {
+  for (let node = start.nextSibling; node !== null && node !== end; node = start.nextSibling) node.remove();
 }
 
 type Component = (props: Record<string, unknown>) => JSX.Element;
@@ -463,14 +485,18 @@ function append(parent: Node, child: Child): void {
 }
 
 /**
- * A child that changes. Text changes in place. Anything else is rebuilt whenever a signal the function read changes:
- * the HTML it showed before is removed, and its own live spots stop. A cleanup of the old HTML that throws doesn't stop
- * the new HTML from showing. If the function throws, the old HTML stays; if a function child it returns throws on its
- * first run, the spot shows nothing until the next change. Either way, what the failed HTML started stops.
+ * A child that changes. Its HTML is whatever lies between two markers it adds to `parent`, so removing that HTML
+ * removes what's there then: an element the new HTML, or another live spot, has taken since stays where it went.
+ * Text changes in place. Anything else is rebuilt whenever a signal the function read changes: the HTML it showed
+ * before is removed, and its own live spots stop. A cleanup of the old HTML that throws doesn't stop the new HTML from
+ * showing. If the function throws, the old HTML stays; if a function child it returns throws on its first run, the spot
+ * shows nothing until the next change. Either way, what the failed HTML started stops.
  */
 function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
-  const end = parent.appendChild(document.createTextNode(""));
+  const start = parent.appendChild(marker());
+  const end = parent.appendChild(marker());
+  const removeShown = () => clear(start, end);
   let text: Text | undefined;
   let shown: Scope | undefined;
   bind(() => {
@@ -510,10 +536,7 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
       rethrowAfter(failure === undefined ? error : failure.error, () => next?.dispose());
     }
     text = isText(value) ? (fragment.firstChild as Text) : undefined;
-    const nodes = [...fragment.childNodes];
-    next.onDispose(() => {
-      for (const node of nodes) node.parentNode?.removeChild(node);
-    });
+    next.onDispose(removeShown);
     end.parentNode?.insertBefore(fragment, end);
     if (failure !== undefined) throw failure.error;
   });
