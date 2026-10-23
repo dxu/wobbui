@@ -1,7 +1,8 @@
 // Runs the built tests, each file in a process of its own as `node --test` does, and ends all of those processes when
 // the run takes too long or is stopped. `node --test` alone doesn't: killing it, or its `--test-timeout`, leaves the
 // processes it started for the test files running, and one stuck printing a happy-dom element grew to ~195 GB. So the
-// run gets a process group of its own, and the whole group is ended. Given test files, it runs only those.
+// run gets a process group of its own, and the whole group is ended; only a process that leaves the group, as a
+// detached one does, escapes. Given test files, it runs only those.
 import { spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -30,12 +31,12 @@ function signalAll(signal: NodeJS.Signals | 0): boolean {
   }
 }
 
-/** Ends every process in the run, gently and then for good, once, and fails the run. */
+/** Ends every process in the run's group, gently and then for good, once, and fails the run. */
 function endAll(why: string): void {
   if (ending) return;
   ending = true;
   process.exitCode = 1;
-  console.error(`wobbui tests: ${why}, so every process they started is being ended.`);
+  console.error(`wobbui tests: ${why}, so every process in their group is being ended.`);
   signalAll("SIGTERM");
   setTimeout(() => {
     signalAll("SIGKILL");
