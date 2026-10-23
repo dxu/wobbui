@@ -290,7 +290,9 @@ changing runs no script at all: every library measured 0 ms a second.
 ## Development
 
 Node 24 or later. `npm install`, then `npm run check` runs the type check, the linter (Oxlint) and the tests, which
-build the package and run against it in happy-dom, a browser written in JavaScript.
+build the package and run against it in happy-dom, a browser written in JavaScript. A test run that takes over a minute,
+or that you stop, is ended along with every process in its process group, which is every one it started unless one
+detaches itself; `node .test/run.js <files>` runs only those files.
 
 ## License
 
