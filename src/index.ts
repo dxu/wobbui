@@ -772,55 +772,66 @@ function liveSpot(parent: Node, live: ReadonlySignal<unknown> | (() => unknown))
   const end = parent.appendChild(marker());
   let text: Text | undefined;
   let shown: Scope | undefined;
-  bind(() => {
-    // What the last run started stops first, while its HTML is still on the page. If a cleanup throws, the spot still
-    // updates, and the error is rethrown once it has: the first error, ahead of any from this run.
-    let failure: { error: unknown } | undefined;
-    const ended = shown;
-    shown = undefined;
-    try {
-      ended?.dispose();
-    } catch (error) {
-      failure = { error };
-    }
-    // What a function starts while it's read, HTML included, belongs to `next`, so the run after this one frees it.
-    let next: Scope | undefined;
-    let value: unknown;
-    if (typeof live !== "function") {
-      value = live.get();
-    } else {
-      next = owner.child();
+  let stopped = false;
+  bind(
+    () => {
+      // What the last run started stops first, while its HTML is still on the page. If a cleanup throws, the spot still
+      // updates, and the error is rethrown once it has: the first error, ahead of any from this run.
+      let failure: { error: unknown } | undefined;
+      const ended = shown;
+      shown = undefined;
       try {
-        value = within(next, live);
+        ended?.dispose();
       } catch (error) {
-        rethrowAfter(failure === undefined ? error : failure.error, () => next?.dispose());
+        failure = { error };
       }
-    }
-    // The rest reads no signal on purpose, so nothing it sets off, such as a custom element told it was removed,
-    // subscribes the spot.
-    outside(() => {
-      // Text changes in place, unless the page has removed its node, as `normalize()` removes an empty one.
-      if (text !== undefined && text.parentNode !== null && isText(value)) {
-        shown = next;
-        text.data = String(value);
+      // A cleanup that stopped the spot, as by unmounting the HTML around it, ends it: nothing would stop a new run.
+      if (stopped) {
+        if (failure !== undefined) throw failure.error;
+        return;
+      }
+      // What a function starts while it's read, HTML included, belongs to `next`, so the run after this one frees it.
+      let next: Scope | undefined;
+      let value: unknown;
+      if (typeof live !== "function") {
+        value = live.get();
       } else {
-        // The old HTML goes before the new is added, so an element the function returns again stays on the page.
-        clear(start, end);
-        text = undefined;
-        const scope = next ?? owner.child();
-        shown = scope;
-        const fragment = document.createDocumentFragment();
+        next = owner.child();
         try {
-          within(scope, () => append(fragment, value as Child));
+          value = within(next, live);
         } catch (error) {
-          rethrowAfter(failure === undefined ? error : failure.error, () => scope.dispose());
+          rethrowAfter(failure === undefined ? error : failure.error, () => next?.dispose());
         }
-        text = isText(value) ? (fragment.firstChild as Text) : undefined;
-        end.parentNode?.insertBefore(fragment, end);
       }
-    });
-    if (failure !== undefined) throw failure.error;
-  });
+      // The rest reads no signal on purpose, so nothing it sets off, such as a custom element told it was removed,
+      // subscribes the spot.
+      outside(() => {
+        // Text changes in place, unless the page has removed its node, as `normalize()` removes an empty one.
+        if (text !== undefined && text.parentNode !== null && isText(value)) {
+          shown = next;
+          text.data = String(value);
+        } else {
+          // The old HTML goes before the new is added, so an element the function returns again stays on the page.
+          clear(start, end);
+          text = undefined;
+          const scope = next ?? owner.child();
+          shown = scope;
+          const fragment = document.createDocumentFragment();
+          try {
+            within(scope, () => append(fragment, value as Child));
+          } catch (error) {
+            rethrowAfter(failure === undefined ? error : failure.error, () => scope.dispose());
+          }
+          text = isText(value) ? (fragment.firstChild as Text) : undefined;
+          end.parentNode?.insertBefore(fragment, end);
+        }
+      });
+      if (failure !== undefined) throw failure.error;
+    },
+    () => {
+      stopped = true;
+    },
+  );
 }
 
 function isText(value: unknown): value is string | number | bigint {
