@@ -2,7 +2,7 @@ import { host } from "./dom.js";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, mock, test, type Mock } from "node:test";
-import { mount, onCleanup, setWarnings, signal, untracked, watch } from "wobbui";
+import { computed, each, mount, onCleanup, setWarnings, show, signal, untracked, watch } from "wobbui";
 
 let warn: Mock<typeof console.warn>;
 
@@ -82,6 +82,39 @@ test("a set inside untracked still warns about a mistake in what it rebuilds", (
     return <p>Visited</p>;
   });
   assert.equal(warn.mock.callCount(), 1, "Badge, rebuilt by the set, read the theme once");
+});
+
+test("a computed value read while building HTML, outside a function, is warned about as a signal is", () => {
+  const count = signal(1);
+  const doubled = computed(() => count.get() * 2);
+  mount(host(), () => <p>{doubled}</p>);
+  assert.equal(warn.mock.callCount(), 0);
+  mount(host(), () => <p>{doubled.get()}</p>);
+  assert.equal(warn.mock.callCount(), 1);
+});
+
+test("a read while show or each builds is warned about, and rebuilds nothing", () => {
+  const theme = signal("light");
+  const parent = host();
+  let builds = 0;
+  mount(parent, () => (
+    <div>
+      {show(true, () => {
+        builds++;
+        return <b>{theme.get()}</b>;
+      })}
+      <ul>
+        {each(["Ada"], (name) => {
+          builds++;
+          return <li>{`${name} ${theme.get()}`}</li>;
+        })}
+      </ul>
+    </div>
+  ));
+  theme.set("dark");
+  assert.equal(builds, 2);
+  assert.equal(parent.textContent, "lightAda light");
+  assert.equal(warn.mock.callCount(), 1, "once for the theme");
 });
 
 test("each signal is warned about once, however often it's misread", () => {

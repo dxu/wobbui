@@ -11,78 +11,86 @@
 
 // Signals ------------------------------------------------------------------------------------------------------------
 
-/** How many times in a row a watcher may change a signal it reads before wobbui gives up on it settling. */
+/** How many times one flush may run a watcher before wobbui gives up on it settling. */
 const MAX_RUNS = 100;
 
-/** Runs a function again whenever a signal it read the last time changes, until it's stopped. */
-class Watcher {
-  readonly #run: () => void;
-  readonly #sources = new Set<Set<Watcher>>();
+/** How stale a reader is: nothing it read has changed, a computed value it read may have, or something it read has. */
+const CLEAN = 0;
+const CHECK = 1;
+const DIRTY = 2;
+type State = typeof CLEAN | typeof CHECK | typeof DIRTY;
+
+/** What reads signals, a watcher or a computed value, and is told when something it read may have changed. */
+class Reader {
+  /** What it read the last time it ran: each source's set of readers, mapped to the source, in the order it read it. */
+  readonly #sources = new Map<Set<Reader>, ReadonlySignal<unknown>>();
+  readonly #told: () => void;
+  #state: State;
   #stopped = false;
-  #running = false;
-  #again = false;
 
-  constructor(run: () => void) {
-    this.#run = run;
+  constructor(told: () => void, state: State = CLEAN) {
+    this.#told = told;
+    this.#state = state;
   }
 
-  run(): void {
+  subscribe(readers: Set<Reader>, source: ReadonlySignal<unknown>): void {
     if (this.#stopped) return;
-    // A run that changes a signal it read asks for one more run, after this one, so the last run sees the last value.
-    if (this.#running) {
-      this.#again = true;
-      return;
-    }
-    this.#running = true;
-    // A run that throws still gets the run it asked for, so the last run sees the last value. The first error is
-    // rethrown after, even when the runs never settle: it says more than running out of runs does.
-    let failure: { error: unknown } | undefined;
-    try {
-      let runs = 0;
-      do {
-        if (++runs > MAX_RUNS) {
-          failure ??= { error: new Error("wobbui: a watcher kept changing a signal it reads.") };
-          break;
-        }
-        this.#again = false;
-        this.#unsubscribe();
-        try {
-          track(this, this.#run);
-        } catch (error) {
-          failure ??= { error };
-        }
-      } while (this.#again && !this.#stopped);
-    } finally {
-      this.#running = false;
-      this.#again = false;
-    }
-    if (failure !== undefined) throw failure.error;
+    readers.add(this);
+    this.#sources.set(readers, source);
   }
 
-  subscribe(watchers: Set<Watcher>): void {
-    if (this.#stopped) return;
-    watchers.add(this);
-    this.#sources.add(watchers);
+  /** The first mark since it was clean tells it: a watcher joins the queue, and a computed value marks its readers. */
+  mark(state: State): void {
+    if (this.#state >= state) return;
+    const told = this.#state === CLEAN;
+    this.#state = state;
+    if (told) this.#told();
   }
 
   stop(): void {
     this.#stopped = true;
-    this.#unsubscribe();
+    this.#leave();
   }
 
-  #unsubscribe(): void {
-    for (const watchers of this.#sources) watchers.delete(this);
+  /** Runs `read`, subscribing this reader to what it reads, and to nothing it read before. */
+  track<T>(read: () => T): T {
+    this.#leave();
+    return track(this, read);
+  }
+
+  /** Whether something it read has changed. It's left clean, so a change made while it runs tells it again. */
+  stale(): boolean {
+    // Brings computed values it read up to date, in order, until one has changed: the next run may not read the rest.
+    if (this.#state === CHECK) {
+      untracked(() => {
+        for (const source of this.#sources.values()) {
+          try {
+            source.get();
+          } catch {
+            // One that throws now has marked this dirty, and the next run reads the error.
+          }
+          if (this.#state === DIRTY) break;
+        }
+      });
+    }
+    const stale = this.#state === DIRTY && !this.#stopped;
+    this.#state = CLEAN;
+    return stale;
+  }
+
+  #leave(): void {
+    for (const readers of this.#sources.keys()) readers.delete(this);
     this.#sources.clear();
   }
 }
 
-/** The watcher running now: every signal it reads subscribes it. */
-let watching: Watcher | undefined;
+/** The reader running now: every signal it reads subscribes it. */
+let watching: Reader | undefined;
 
-/** Runs `run` with `watcher` as the one that the signals it reads subscribe, or none. */
-function track<T>(watcher: Watcher | undefined, run: () => T): T {
+/** Runs `run` with `reader` as the one that the signals it reads subscribe, or none. */
+function track<T>(reader: Reader | undefined, run: () => T): T {
   const outer = watching;
-  watching = watcher;
+  watching = reader;
   try {
     return run();
   } finally {
@@ -90,37 +98,181 @@ function track<T>(watcher: Watcher | undefined, run: () => T): T {
   }
 }
 
-/** A value that changes. Reading it in a live spot, or in `watch`, makes that run again when it changes. */
+/** Subscribes the reader running now to `source`, or warns of a read while HTML is built outside any reader. */
+function onRead(source: ReadonlySignal<unknown>, readers: Set<Reader>): void {
+  if (watching !== undefined) watching.subscribe(readers, source);
+  else if (warnings && building !== undefined) warnOfRead(source);
+}
+
+/** A value that changes. Reading it in a live spot, `watch` or a computed value runs that again when it changes. */
 export class Signal<T> {
   #value: T;
-  readonly #watchers = new Set<Watcher>();
+  readonly #readers = new Set<Reader>();
 
   constructor(value: T) {
     this.#value = value;
   }
 
-  /** The value now. Inside a live spot or `watch`, also subscribes it to changes. */
+  /** The value now. Inside a live spot, `watch` or a computed value, also subscribes it to changes. */
   get(): T {
-    if (watching !== undefined) watching.subscribe(this.#watchers);
-    else if (warnings && building !== undefined) warnOfRead(this);
+    onRead(this, this.#readers);
     return this.#value;
   }
 
   /**
-   * Changes the value and, if it's a different value, runs everything that read it, before returning. If one of them
-   * throws, the rest still run, and the first error is rethrown.
+   * Changes the value and, if it's a different value, runs everything that read it, before returning or once its batch
+   * is done. If one of them throws, the rest still run, and the first error is rethrown unless a `catchError` takes it.
    */
   set(value: T): void {
     if (Object.is(value, this.#value)) return;
     this.#value = value;
-    // A copy: a watcher that runs leaves the set and joins it again, and a set's loop would reach it a second time.
-    forEach(Array.from(this.#watchers), (watcher) => watcher.run());
+    for (const reader of this.#readers) reader.mark(DIRTY);
+    flush();
   }
 }
 
 /** A signal holding `value`. */
 export function signal<T>(value: T): Signal<T> {
   return new Signal(value);
+}
+
+/** A value computed from signals, again only when it's read after a change; its readers run only when it changes. */
+export class Computed<T> {
+  readonly #read: () => T;
+  readonly #readers = new Set<Reader>();
+  readonly #reader = new Reader(() => {
+    for (const reader of this.#readers) reader.mark(CHECK);
+  });
+  /** What `read` returned, or threw, the last time it ran. */
+  #last: { value: T } | { error: unknown };
+
+  constructor(read: () => T) {
+    this.#read = read;
+    // Made while HTML is built, it stops with that HTML, keeping its last value.
+    building?.onDispose(() => this.#reader.stop());
+    this.#last = this.#run();
+  }
+
+  /** The value now, read as a signal is. If `read` threw, this throws its error. */
+  get(): T {
+    if (this.#reader.stale()) {
+      const last = this.#last;
+      this.#last = this.#run();
+      // An error always counts as a change.
+      if (!("value" in last && "value" in this.#last && Object.is(last.value, this.#last.value))) {
+        for (const reader of this.#readers) reader.mark(DIRTY);
+      }
+    }
+    onRead(this, this.#readers);
+    if ("error" in this.#last) throw this.#last.error;
+    return this.#last.value;
+  }
+
+  #run(): { value: T } | { error: unknown } {
+    try {
+      return { value: this.#reader.track(this.#read) };
+    } catch (error) {
+      return { error };
+    }
+  }
+}
+
+/** A value computed by `read` from signals. */
+export function computed<T>(read: () => T): Computed<T> {
+  return new Computed(read);
+}
+
+/** What a component takes when it only reads a value that changes: a signal, or a computed value. */
+export type ReadonlySignal<T> = Signal<T> | Computed<T>;
+
+/** The watchers told to run, and how many batches, flushes and first runs are running: while one is, they wait. */
+let queue: Watcher[] = [];
+let batching = 0;
+
+/** How many flushes have started, to count each watcher's runs in one. */
+let flushes = 0;
+
+/** The watcher whose run is under way, even inside `outside`: a scope made now is made by that run. */
+let running: Watcher | undefined;
+
+/** Runs a function again whenever something it read the last time changes, until it's stopped. */
+class Watcher extends Reader {
+  /** The scope it was made in, where an error from its run looks for a `catchError`. */
+  readonly scope = building;
+  readonly #run: () => void;
+  #runs = 0;
+  #flush = 0;
+
+  constructor(run: () => void) {
+    // Dirty, since it hasn't run yet.
+    super(() => queue.push(this), DIRTY);
+    this.#run = run;
+  }
+
+  /** Runs, if something it read has changed and it hasn't been stopped. */
+  update(): void {
+    if (!this.stale()) return;
+    this.#runs = this.#flush === flushes ? this.#runs + 1 : 1;
+    this.#flush = flushes;
+    if (this.#runs > MAX_RUNS) throw new Error("wobbui: a watcher kept changing a signal it reads.");
+    this.track(this.#run);
+  }
+}
+
+/**
+ * Runs the queued watchers, and what they queue, until none is left. Before each, the watchers whose runs made it run,
+ * outermost first, if they're due: one may stop it, so it never runs on values that are about to remove it. An error
+ * goes to a `catchError` around the watcher that threw it, or is rethrown once all have run.
+ */
+function flush(): void {
+  if (batching > 0) return;
+  batching++;
+  flushes++;
+  let failure: { error: unknown } | undefined;
+  while (queue.length > 0) {
+    const round = queue;
+    queue = [];
+    for (const watcher of round) {
+      for (const due of [...makersOf(watcher), watcher]) {
+        try {
+          due.update();
+        } catch (error) {
+          if (!due.scope?.caught(error)) failure ??= { error };
+        }
+      }
+    }
+  }
+  batching--;
+  if (failure !== undefined) throw failure.error;
+}
+
+/** The watchers whose runs made `watcher`, through the scopes it's in, outermost first. */
+function makersOf(watcher: Watcher): Watcher[] {
+  const makers: Watcher[] = [];
+  for (let scope = watcher.scope; scope !== undefined; scope = scope.parent) {
+    if (scope.maker !== undefined && scope.maker !== makers[0]) makers.unshift(scope.maker);
+  }
+  return makers;
+}
+
+/**
+ * Runs `run` and returns what it returns. Signals set inside change at once, but what read them runs once, after the
+ * outermost batch. If `run` throws, that still runs, and `run`'s error is rethrown.
+ */
+export function batch<T>(run: () => T): T {
+  batching++;
+  let result: T;
+  try {
+    result = run();
+  } catch (error) {
+    rethrowAfter(error, () => {
+      batching--;
+      flush();
+    });
+  }
+  batching--;
+  flush();
+  return result;
 }
 
 /**
@@ -165,10 +317,10 @@ export function watch(run: () => void): () => void {
 }
 
 /**
- * Stands in for a watcher inside `untracked`: the signals read there subscribe nothing, and the reads are on purpose.
- * Anything that runs a watcher of its own inside, such as a `set` that rebuilds part of the page, sets its own.
+ * Stands in for a reader inside `untracked`: the signals read there subscribe nothing, and the reads are on purpose.
+ * Anything that runs a reader of its own inside, such as a computed value brought up to date, sets its own.
  */
-const QUIET = new Watcher(() => {});
+const QUIET = new Reader(() => {});
 QUIET.stop();
 
 /**
@@ -179,10 +331,10 @@ export function untracked<T>(read: () => T): T {
   return track(QUIET, read);
 }
 
-/** Runs `run` as the page would, outside anything being built or watched: for event handlers and cleanups. */
-function outside<T>(run: () => T): T {
+/** Runs `run` as the page would, outside anything watched, building only for `scope`: for handlers and cleanups. */
+function outside<T>(run: () => T, scope?: Scope): T {
   const outer = building;
-  building = undefined;
+  building = scope;
   try {
     return track(undefined, run);
   } finally {
@@ -194,7 +346,7 @@ function outside<T>(run: () => T): T {
 let warnings = false;
 
 /** The signals already warned about, so a mistake in a list or in a part rebuilt every frame warns once. */
-const warned = new WeakSet<Signal<unknown>>();
+const warned = new WeakSet<ReadonlySignal<unknown>>();
 
 /**
  * Turns wobbui's warnings on or off. They're off unless turned on, and wobbui's development build, which bundlers such
@@ -205,7 +357,7 @@ export function setWarnings(on: boolean): void {
 }
 
 /** Warns, once per signal, that `source` was read while HTML was built, outside anything that would read it again. */
-function warnOfRead(source: Signal<unknown>): void {
+function warnOfRead(source: ReadonlySignal<unknown>): void {
   if (warned.has(source)) return;
   warned.add(source);
   console.warn(
@@ -228,7 +380,16 @@ export function onCleanup(cleanup: () => void): void {
  * once it's called, that HTML forgets it.
  */
 function bind(run: () => void, onStop?: () => void): () => void {
-  const watcher = new Watcher(run);
+  const watcher: Watcher = new Watcher(() => {
+    // A scope made in this run is made by this watcher, whose next run may dispose it.
+    const outer = running;
+    running = watcher;
+    try {
+      run();
+    } finally {
+      running = outer;
+    }
+  });
   const owner = building;
   const stop = () => {
     owner?.forget(stop);
@@ -237,7 +398,9 @@ function bind(run: () => void, onStop?: () => void): () => void {
   };
   owner?.onDispose(stop);
   try {
-    watcher.run();
+    // As a batch, so what the run changes runs after it, and never inside it. If anything in it throws, `stop` never
+    // reaches the caller, so it's stopped here.
+    batch(() => watcher.update());
   } catch (error) {
     rethrowAfter(error, stop);
   }
@@ -272,12 +435,26 @@ function forEach<T>(items: readonly T[], act: (item: T) => void): void {
 
 // Scopes -------------------------------------------------------------------------------------------------------------
 
+/** Brands a scope as an `Owner`, which shows nothing else of it. */
+declare const owned: unique symbol;
+
 /**
  * Frees what was made while building a piece of HTML: its live spots, and the HTML a live spot built. A live spot's
  * HTML has a scope of its own, inside the one that built the spot, so rebuilding it frees only that part.
  */
 class Scope {
+  declare readonly [owned]: true;
   #cleanups: Set<() => void> | undefined = new Set();
+  /** The scope it was made in, to find an error's handler, and the watchers that run before those inside it. */
+  readonly parent: Scope | undefined;
+  /** The watcher whose run made it, if one did: its next run may dispose it, so it runs first. */
+  readonly maker = running;
+  /** Takes an error thrown inside, for `catchError`. */
+  onError: ((error: unknown) => void) | undefined;
+
+  constructor(parent?: Scope) {
+    this.parent = parent;
+  }
 
   /** Runs `cleanup` when this scope is disposed, or now if it already was. */
   onDispose(cleanup: () => void): void {
@@ -292,11 +469,18 @@ class Scope {
 
   /** A scope disposed with this one, unless it's disposed first. */
   child(): Scope {
-    const child = new Scope();
+    const child = new Scope(this);
     const dispose = () => child.dispose();
     this.onDispose(dispose);
     child.onDispose(() => this.forget(dispose));
     return child;
+  }
+
+  /** Hands `error` to the nearest handler not yet disposed, from this scope out. Returns whether there was one. */
+  caught(error: unknown): boolean {
+    if (this.onError === undefined || this.#cleanups === undefined) return this.parent?.caught(error) ?? false;
+    this.onError(error);
+    return true;
   }
 
   /** Runs every cleanup, newest first. If one throws, the rest still run, and the first error is rethrown. */
@@ -330,6 +514,32 @@ function currentScope(what: string): Scope {
   throw new Error(`wobbui: ${what} only works inside mount() or watch(), which can stop it.`);
 }
 
+/** What `getOwner` returns: what was being built, for `runWithOwner`, showing nothing else. */
+export type Owner = { readonly [owned]: true };
+
+/** What's being built now, if anything, for `runWithOwner` to add to later, as from a click or after an `await`. */
+export function getOwner(): Owner | undefined {
+  return building;
+}
+
+/**
+ * Runs `run` as part of `owner`, outside anything watched, and returns what it returns: what it makes goes with the
+ * owner, at once if the owner has gone. An error that a `catchError` around the owner takes returns `undefined`.
+ */
+export function runWithOwner<T>(owner: Owner | undefined, run: () => T): T | undefined {
+  // Every owner is a scope, since only `getOwner` makes one.
+  const scope = owner as Scope | undefined;
+  // As a batch, so only `run`'s own error goes to a `catchError`, and one from what it changed reaches the caller.
+  return batch(() => {
+    try {
+      return outside(run, scope);
+    } catch (error) {
+      if (!scope?.caught(error)) throw error;
+      return undefined;
+    }
+  });
+}
+
 // Building -----------------------------------------------------------------------------------------------------------
 
 /** What JSX accepts as a child. */
@@ -341,12 +551,14 @@ export type Child =
   | boolean
   | null
   | undefined
+  // Not `ReadonlySignal<Child>`, which TypeScript can't expand inside the type it defines.
   | Signal<Child>
+  | Computed<Child>
   | (() => Child)
   | readonly Child[];
 
-/** What a live spot shows: a plain value, a signal, or a function that reads signals. */
-export type Live<T> = T | Signal<T> | (() => T);
+/** What a live spot shows: a plain value, a signal or a computed value, or a function that reads signals. */
+export type Live<T> = T | ReadonlySignal<T> | (() => T);
 
 /**
  * Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which stops every live spot in the HTML
@@ -355,7 +567,8 @@ export type Live<T> = T | Signal<T> | (() => T);
  */
 export function mount(parent: Node, build: () => JSX.Element): () => void {
   const owner = building;
-  const scope = new Scope();
+  // Errors inside find a handler around the owner, but the scope joins the owner only once its HTML is added, below.
+  const scope = new Scope(owner);
   const unmount = () => {
     owner?.forget(unmount);
     scope.dispose();
@@ -365,11 +578,7 @@ export function mount(parent: Node, build: () => JSX.Element): () => void {
   // last, once what the HTML started has stopped.
   const start = marker();
   const end = marker();
-  scope.onDispose(() => {
-    clear(start, end);
-    start.remove();
-    end.remove();
-  });
+  scope.onDispose(() => remove(start, end));
   try {
     const html = within(scope, () => track(undefined, build));
     // The markers go in first, so a parent that refuses the HTML refuses it before it leaves wherever it was.
@@ -395,6 +604,13 @@ function marker(): Comment {
 /** Removes the nodes between `start` and `end`. */
 function clear(start: Node, end: Node): void {
   for (let node = start.nextSibling; node !== null && node !== end; node = start.nextSibling) node.remove();
+}
+
+/** Removes `start`, `end` and the nodes between them. */
+function remove(start: ChildNode, end: ChildNode): void {
+  clear(start, end);
+  start.remove();
+  end.remove();
 }
 
 type Component = (props: Record<string, unknown>) => JSX.Element;
@@ -440,11 +656,11 @@ function setProperty(element: HTMLElement, name: string, value: unknown): void {
     throw new Error(`wobbui: ${name} isn't a prop, since it would put text on the page as HTML. Set it in a ref.`);
   } else if (name.startsWith("on")) {
     // A handler can run while HTML is still being built, as when building focuses an input, so it runs as the page
-    // would run it: subscribing nothing, and its reads not warned about.
+    // would run it: subscribing nothing, and its reads not warned about. As a batch, what it changes updates once.
     (element as unknown as Record<string, unknown>)[name] =
       typeof value === "function"
         ? function (this: unknown, ...args: unknown[]) {
-            return outside(() => (value as (...args: unknown[]) => unknown).apply(this, args));
+            return outside(() => batch(() => (value as (...args: unknown[]) => unknown).apply(this, args)));
           }
         : value;
   } else if (isLive(value)) {
@@ -517,19 +733,19 @@ function assign(element: HTMLElement, name: string, value: unknown): void {
   }
 }
 
-function isLive(value: unknown): value is Signal<unknown> | (() => unknown) {
-  return value instanceof Signal || typeof value === "function";
+function isLive<T>(value: Live<T>): value is ReadonlySignal<T> | (() => T) {
+  return value instanceof Signal || value instanceof Computed || typeof value === "function";
 }
 
 /** A live value's value now. */
-function latest(live: Signal<unknown> | (() => unknown)): unknown {
-  return live instanceof Signal ? live.get() : live();
+function latest<T>(live: ReadonlySignal<T> | (() => T)): T {
+  return typeof live === "function" ? live() : live.get();
 }
 
 function append(parent: Node, child: Child): void {
   if (child === null || child === undefined || typeof child === "boolean") return;
   if (Array.isArray(child)) {
-    for (const each of child as readonly Child[]) append(parent, each);
+    for (const item of child as readonly Child[]) append(parent, item);
   } else if (child instanceof Node) {
     parent.appendChild(child);
   } else if (isLive(child)) {
@@ -549,7 +765,7 @@ function append(parent: Node, child: Child): void {
  * the spot shows nothing until the next change. Either way, what the failed HTML started stops. A spot that stops
  * leaves its HTML for whatever removes the HTML around it, so every cleanup inside runs while all of it is on the page.
  */
-function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
+function liveSpot(parent: Node, live: ReadonlySignal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
   const start = parent.appendChild(marker());
   const end = parent.appendChild(marker());
@@ -559,7 +775,7 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
     // What a function starts while it's read, HTML included, belongs to `next`, so the run after this one frees it.
     let next: Scope | undefined;
     let value: unknown;
-    if (live instanceof Signal) {
+    if (typeof live !== "function") {
       value = live.get();
     } else {
       next = owner.child();
@@ -606,6 +822,106 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
 
 function isText(value: unknown): value is string | number | bigint {
   return typeof value === "string" || typeof value === "number" || typeof value === "bigint";
+}
+
+/**
+ * A part that shows `build`'s HTML while `when` is truthy, and `fallback`'s, if any, while it isn't. It rebuilds only
+ * when `when` flips, since `build` reads signals as any HTML does: typing in an input inside doesn't rebuild it.
+ */
+export function show(when: Live<unknown>, build: () => Child, fallback?: () => Child): () => Child {
+  const truthy = computed(() => Boolean(isLive(when) ? latest(when) : when));
+  return () => {
+    const make = truthy.get() ? build : fallback;
+    return make && track(undefined, make);
+  };
+}
+
+/** An item's HTML in a list from `each`: what lies between two markers, and what it started. */
+type Row<T> = { item: T; scope: Scope; start: Comment; end: Comment };
+
+/**
+ * A list that keeps each item's HTML, built once by `render`, as the list changes: an item still there keeps its HTML,
+ * moved into place, and a gone item's is removed after its cleanups. Items match by identity, repeated ones in order.
+ */
+export function each<T>(list: Live<readonly T[]>, render: (item: T) => Child): DocumentFragment {
+  const owner = currentScope("A live value");
+  const html = document.createDocumentFragment();
+  // Where the list starts: the first row goes right after it, and each other row right after the one before.
+  const start = html.appendChild(marker());
+  let rows: Row<T>[] = [];
+  bind(() => {
+    const items = isLive(list) ? latest(list) : list;
+    // The rest reads no signal on purpose, as in a live spot.
+    outside(() => {
+      // Each item's rows, in the order they were shown.
+      const old = new Map<T, Row<T>[]>();
+      for (const row of rows) {
+        const same = old.get(row.item);
+        if (same === undefined) old.set(row.item, [row]);
+        else same.push(row);
+      }
+      const built: Row<T>[] = [];
+      try {
+        rows = items.map((item) => {
+          const kept = old.get(item)?.shift();
+          if (kept !== undefined) return kept;
+          const row = { item, scope: owner.child(), start: marker(), end: marker() };
+          built.push(row);
+          within(row.scope, () => append(document.createDocumentFragment(), [row.start, render(item), row.end]));
+          return row;
+        });
+      } catch (error) {
+        // No row is added or removed.
+        rethrowAfter(error, () => forEach(built, (row) => row.scope.dispose()));
+      }
+      // A gone row's cleanups run while it's on the page; if one throws, the list still updates before it's rethrown.
+      const gone = [...old.values()].flat();
+      try {
+        forEach(gone, (row) => row.scope.dispose());
+      } finally {
+        for (const row of gone) remove(row.start, row.end);
+        // One walk puts the rows in order: a row right after the one before it stays, and any other moves there.
+        let previous: ChildNode = start;
+        for (const row of rows) {
+          if (previous.nextSibling !== row.start) {
+            const nodes: ChildNode[] = [];
+            for (let node: ChildNode | null = row.start; node !== null; node = node.nextSibling) {
+              nodes.push(node);
+              if (node === row.end) break;
+            }
+            previous.after(...nodes);
+          }
+          previous = row.end;
+        }
+      }
+    });
+  });
+  return html;
+}
+
+/**
+ * A part that shows `build`'s HTML until something in it throws, as it's built or updates, and then `fallback(error,
+ * reset)` until `reset()` builds it again. The fallback's errors go to the next one out; event handlers' aren't caught.
+ */
+export function catchError(build: () => Child, fallback: (error: unknown, reset: () => void) => Child): () => Child {
+  const failed = signal<{ error: unknown } | undefined>(undefined);
+  const reset = () => failed.set(undefined);
+  return () => {
+    const failure = failed.get();
+    if (failure !== undefined) return track(undefined, () => fallback(failure.error, reset));
+    // Built in a scope of its own, live parts and all, so an error from inside finds this one.
+    const scope = currentScope("catchError").child();
+    scope.onError = (error) => failed.set({ error });
+    const html = document.createDocumentFragment();
+    try {
+      within(scope, () => append(html, track(undefined, build)));
+      return html;
+    } catch (error) {
+      // The part then runs again, which stops what this build started, and shows the fallback.
+      failed.set({ error });
+      return undefined;
+    }
+  };
 }
 
 // Types for JSX ------------------------------------------------------------------------------------------------------
