@@ -1,7 +1,7 @@
 import { fire, host, press } from "./dom.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mount } from "wobbui";
+import { jsx, mount } from "wobbui";
 
 test("JSX builds real elements, with their properties, attributes and children", () => {
   const parent = host();
@@ -80,12 +80,43 @@ test("an event handler gets the browser's own event, typed for its element", () 
 test("a property given undefined is left empty", () => {
   const parent = host();
   const hint: string | undefined = undefined;
-  // `as string`: apps without exactOptionalPropertyTypes pass an optional prop's undefined straight through.
-  mount(parent, () => <input placeholder={hint as unknown as string} />);
+  mount(parent, () => <input placeholder={hint} />);
   const input = parent.querySelector("input");
   assert.ok(input);
   assert.equal(input.placeholder, "");
   assert.equal(input.getAttribute("placeholder"), null);
+});
+
+test("an input's list and a form control's form set their attributes", () => {
+  const parent = host();
+  mount(parent, () => (
+    <div>
+      <input list="names" />
+      <button form="signup">Join</button>
+    </div>
+  ));
+  assert.equal(parent.querySelector("input")?.getAttribute("list"), "names");
+  assert.equal(parent.querySelector("button")?.getAttribute("form"), "signup");
+});
+
+test("raw HTML isn't a prop: innerHTML, outerHTML and an iframe's srcdoc are type errors", () => {
+  const text = "<b>Ada</b>";
+  // Never run: the test build type-checks it, and fails if any of these is accepted.
+  const rawHtml = () => [
+    // @ts-expect-error innerHTML would write the text into the page as HTML.
+    <p innerHTML={text} />,
+    // @ts-expect-error outerHTML would too.
+    <p outerHTML={text} />,
+    // @ts-expect-error An iframe's srcdoc would too.
+    <iframe srcdoc={text} />,
+  ];
+  void rawHtml;
+});
+
+test("raw HTML is refused when it's run without types, as plain JavaScript would", () => {
+  const parent = host();
+  assert.throws(() => mount(parent, () => jsx("p", { innerHTML: "<b>Ada</b>" })), /innerHTML isn't a prop/);
+  assert.equal(parent.childNodes.length, 0);
 });
 
 test("aria- and data- attributes write true and false out", () => {

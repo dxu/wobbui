@@ -93,6 +93,26 @@ test("onCleanup in a watch runs before the next run, and when it stops", () => {
   assert.deepEqual(log, ["start 1", "clean 1", "start 2", "clean 2"]);
 });
 
+test("a watch whose cleanup stops it starts no new run", () => {
+  const volume = signal(1);
+  let runs = 0;
+  let active = 0;
+  const stop = watch(() => {
+    volume.get();
+    runs++;
+    active++;
+    onCleanup(() => {
+      active--;
+      stop();
+    });
+  });
+  volume.set(2);
+  assert.equal(runs, 1);
+  assert.equal(active, 0, "nothing a new run started is left active");
+  volume.set(3);
+  assert.equal(runs, 1, "a later change runs nothing");
+});
+
 test("a signal read in a watch's onCleanup doesn't make the watch run again", () => {
   const volume = signal(1);
   const muted = signal(false);
