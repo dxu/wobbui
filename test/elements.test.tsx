@@ -113,9 +113,10 @@ test("raw HTML isn't a prop: innerHTML, outerHTML and an iframe's srcdoc are typ
   void rawHtml;
 });
 
-test("raw HTML is refused when it's run without types, as plain JavaScript would", () => {
+test("raw HTML is refused when it's run without types, as plain JavaScript would, whatever its case", () => {
   const parent = host();
   assert.throws(() => mount(parent, () => jsx("p", { innerHTML: "<b>Ada</b>" })), /innerHTML isn't a prop/);
+  assert.throws(() => mount(parent, () => jsx("iframe", { srcDoc: "<b>Ada</b>" })), /srcDoc isn't a prop/);
   assert.equal(parent.childNodes.length, 0);
 });
 

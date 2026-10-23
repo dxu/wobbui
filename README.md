@@ -59,9 +59,9 @@ const unmount = mount(document.body, () => (
 - **`null` or `undefined` clears a property,** so an optional prop passed straight through leaves nothing behind. The
   attribute it reflects is removed, so a progress bar's `value` goes back to showing it's still loading, and an
   option's `value` to its text. The properties that hold what's entered or shown go back to empty instead: `value` on
-  an input, select, textarea or output, and `valueAsNumber`, `valueAsDate`, `checked`, `indeterminate`, `selected`,
-  `selectedIndex`, `textContent` and `innerText`. A property that does neither, such as `volume` or `scrollTop`, keeps
-  its value.
+  an input, select, textarea or output, and `defaultValue`, `valueAsNumber`, `valueAsDate`, `checked`, `indeterminate`,
+  `selected`, `selectedIndex`, `textContent` and `innerText`. A property that does neither, such as `volume` or
+  `scrollTop`, keeps its value.
 - **`style` takes text:** `style="width: 8rem"`.
 - **`ref` gets the element** once it's built, children and all, before it's on the page:
   `<canvas ref={(canvas) => (context = canvas.getContext("2d"))} />`. To focus an input, keep it this way and call

@@ -146,6 +146,20 @@ test("if adding the HTML to the parent throws, what was started stops", () => {
   assert.deepEqual(heard, [1]);
 });
 
+test("a mount whose owner goes while it's being built is removed as soon as it's added", () => {
+  const parent = host();
+  const opened = signal(false);
+  const stop = watch(() => {
+    const closing = opened.get();
+    mount(parent, () => {
+      if (closing) stop();
+      return <p>Dialog</p>;
+    });
+  });
+  opened.set(true);
+  assert.equal(parent.childNodes.length, 0);
+});
+
 test("unmounting twice does nothing the second time", () => {
   const parent = host();
   const unmount = mount(parent, () => <p>Once</p>);

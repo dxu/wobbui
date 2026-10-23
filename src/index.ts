@@ -354,11 +354,15 @@ export type Live<T> = T | Signal<T> | (() => T);
  * dialog can mount itself on `document.body` and still go with the component that opened it.
  */
 export function mount(parent: Node, build: () => JSX.Element): () => void {
-  const scope = building?.child() ?? new Scope();
-  const unmount = () => scope.dispose();
+  const owner = building;
+  const scope = new Scope();
+  const unmount = () => {
+    owner?.forget(unmount);
+    scope.dispose();
+  };
   // The HTML is whatever lies between two markers, so unmounting removes what's there then: an element that another
-  // mount or a live spot has taken since stays where it went. Removing it is a cleanup added before the HTML is built,
-  // so it runs after every cleanup the HTML adds, once what the HTML started has stopped.
+  // mount or a live spot has taken since stays where it went. Removing it is the scope's first cleanup, so it runs
+  // last, once what the HTML started has stopped.
   const start = marker();
   const end = marker();
   scope.onDispose(() => {
@@ -375,6 +379,8 @@ export function mount(parent: Node, build: () => JSX.Element): () => void {
   } catch (error) {
     rethrowAfter(error, unmount);
   }
+  // Only once the HTML is on the page, so that if what's being built went while this was built, this removes it now.
+  owner?.onDispose(unmount);
   return unmount;
 }
 
@@ -423,11 +429,14 @@ export function Fragment(props: { children?: Child }): DocumentFragment {
   return fragment;
 }
 
-/** The properties that would put text on the page as HTML. The types refuse them too; this catches untyped calls. */
-const RAW_HTML = new Set(["innerHTML", "outerHTML", "srcdoc"]);
+/**
+ * The props that would put text on the page as HTML, in lowercase. The types refuse them too; this catches untyped
+ * calls, whatever their case, since `srcDoc` would set the `srcdoc` attribute.
+ */
+const RAW_HTML = new Set(["innerhtml", "outerhtml", "srcdoc"]);
 
 function setProperty(element: HTMLElement, name: string, value: unknown): void {
-  if (RAW_HTML.has(name)) {
+  if (RAW_HTML.has(name.toLowerCase())) {
     throw new Error(`wobbui: ${name} isn't a prop, since it would put text on the page as HTML. Set it in a ref.`);
   } else if (name.startsWith("on")) {
     // A handler can run while HTML is still being built, as when building focuses an input, so it runs as the page
@@ -452,7 +461,6 @@ const ATTRIBUTE_OF = new Map([
   ["htmlFor", "for"],
   ["httpEquiv", "http-equiv"],
   ["acceptCharset", "accept-charset"],
-  ["defaultValue", "value"],
   ["defaultChecked", "checked"],
   ["defaultSelected", "selected"],
   ["defaultMuted", "muted"],
@@ -466,10 +474,11 @@ function attributeOf(name: string): string {
 /**
  * What a property goes back to when it's given `null` or `undefined`, where it holds what's entered or shown instead of
  * reflecting an attribute. `value` does so only on the elements in `ENTERED`; elsewhere, as on `<progress>` or
- * `<option>`, removing its attribute clears it.
+ * `<option>`, removing its attribute clears it. `defaultValue` is a textarea's text, so it's set, not removed.
  */
 const EMPTY = new Map<string, unknown>([
   ["value", ""],
+  ["defaultValue", ""],
   ["valueAsNumber", NaN],
   ["valueAsDate", null],
   ["checked", false],

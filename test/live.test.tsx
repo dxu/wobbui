@@ -161,57 +161,61 @@ test("a live valueAsNumber, valueAsDate or selectedIndex given null is cleared",
   assert.equal(select.selectedIndex, -1);
 });
 
-test("null removes the attribute a property reflects: a progress bar's value, an option's, and an input's default", () => {
+test("null removes the attribute a property reflects: a progress bar's value and an option's", () => {
   const parent = host();
   const loaded = signal<number | null>(0.5);
   const code = signal<string | null>("nl");
-  const initial = signal<string | null>("Ada");
   mount(parent, () => (
     <form>
       <progress value={loaded} />
       <select>
         <option value={code}>Dutch</option>
       </select>
-      <input defaultValue={initial} />
     </form>
   ));
   const progress = parent.querySelector("progress");
   const option = parent.querySelector("option");
-  const input = parent.querySelector("input");
-  assert.ok(progress && option && input);
+  assert.ok(progress && option);
   assert.equal(progress.getAttribute("value"), "0.5");
   assert.equal(option.value, "nl");
-  assert.equal(input.getAttribute("value"), "Ada");
   loaded.set(null);
   code.set(null);
-  initial.set(null);
   assert.equal(progress.getAttribute("value"), null, "the bar shows it's still loading");
   assert.equal(option.value, "Dutch", "the option's value is its text again");
-  assert.equal(input.getAttribute("value"), null);
 });
 
-test("null clears an option's selected and an element's innerText", () => {
+test("null empties an option's selected, an innerText, and an input's and a textarea's default value", () => {
   const parent = host();
   const chosen = signal<boolean | null>(true);
   const note = signal<string | null>("Saved");
+  const initial = signal<string | null>("Ada");
   mount(parent, () => (
-    <div>
+    <form>
       <select>
         <option>Small</option>
         <option selected={chosen}>Large</option>
       </select>
       <p innerText={note} />
-    </div>
+      <input defaultValue={initial} />
+      <textarea defaultValue={initial} />
+    </form>
   ));
   const option = parent.querySelectorAll("option")[1];
   const paragraph = parent.querySelector("p");
-  assert.ok(option && paragraph);
+  const input = parent.querySelector("input");
+  const textarea = parent.querySelector("textarea");
+  assert.ok(option && paragraph && input && textarea);
   assert.equal(option.selected, true);
   assert.equal(paragraph.textContent, "Saved");
+  assert.equal(input.defaultValue, "Ada");
+  assert.equal(textarea.defaultValue, "Ada");
   chosen.set(null);
   note.set(null);
+  initial.set(null);
   assert.equal(option.selected, false);
   assert.equal(paragraph.textContent, "");
+  assert.equal(input.defaultValue, "");
+  assert.equal(textarea.defaultValue, "");
 });
 
 test("a live aria- attribute follows its signal", () => {
