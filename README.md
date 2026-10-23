@@ -204,6 +204,7 @@ wobbui doesn't enforce these, but they keep pages easy to follow.
 - **One component per file, named after it,** as `Slider.tsx` holds `Slider`, with helpers only it uses kept in it.
 - **An app's data goes in files ending in `.data.ts`,** such as a menu's entries or a form's fields: values only, each
   checked against its type with `satisfies`, with no functions or components, so the ending tells data apart from code.
+  The types they're checked against live with the code that reads them.
 
 ## API
 
