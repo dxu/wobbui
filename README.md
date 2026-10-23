@@ -109,8 +109,8 @@ that points at the line. Read once on purpose, such as to start a form from a sa
 `signal(untracked(() => saved.get()))`. Bundlers such as Vite pick wobbui's development build while developing, which
 has the warnings on; a production build leaves them off. `setWarnings(true)` turns them on anywhere else.
 
-A function child can return HTML. When a signal it read changes, the function runs again and builds the new HTML;
-then the live spots inside the HTML it showed stop, that HTML is removed, and the new HTML takes its place:
+A function child can return HTML. When a signal it read changes, the live spots inside the HTML it showed stop, the
+function runs again and builds new HTML, and the new HTML takes the old one's place:
 
 ```tsx
 const open = signal(false);
@@ -244,15 +244,15 @@ function Clock() {
 }
 ```
 
-A part that rebuilds is cleaned up the same way each time: its function runs again first and builds the new HTML, and
-then what the old HTML started is stopped. A `watch` is cleaned up before each run instead: another `watch` or an
-`onCleanup` started in a run is stopped before the next run starts. Cleanups run while their HTML, live parts and
-all, is still on the page, and then it's removed, so a cleanup can still read it, such as to save how far it was
-scrolled.
+A part that rebuilds is cleaned up the same way before each rebuild, and so is a `watch` before each of its runs:
+another `watch` or an `onCleanup` started in a run is stopped before the next run starts. Cleanups run while their
+HTML, live parts and all, is still on the page, and then it's removed, so a cleanup can still read it, such as to save
+how far it was scrolled.
 
 When something throws, wobbui keeps going. A cleanup that throws as old HTML goes doesn't stop the new HTML from
 showing, and a `watch` whose cleanup throws still runs. If a part's function throws, the part keeps the HTML it
-showed; if a function child it returns throws on its first run, the part shows nothing until its signal changes again.
+showed, though what that HTML started has stopped; if a function child it returns throws on its first run, the part
+shows nothing until its signal changes again.
 Either way, what the failed HTML started stops, and the error reaches the code that changed the signal, as `set` says.
 
 To show something else instead, wrap the HTML in `catchError`. An error inside, as it's built or as a part of it

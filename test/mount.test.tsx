@@ -80,6 +80,25 @@ test("onCleanup in a part that rebuilds runs when that part is rebuilt", () => {
   assert.equal(parent.textContent, "settings");
 });
 
+test("a part that rebuilds stops what its last run started before it runs again, as a watch does", () => {
+  const parent = host();
+  const page = signal("home");
+  const log: string[] = [];
+  mount(parent, () => (
+    <main>
+      {() => {
+        const name = page.get();
+        log.push(`show ${name}`);
+        onCleanup(() => log.push(`leave ${name}`));
+        return <h1>{name}</h1>;
+      }}
+    </main>
+  ));
+  page.set("settings");
+  assert.deepEqual(log, ["show home", "leave home", "show settings"]);
+  assert.equal(parent.textContent, "settings");
+});
+
 test("cleanups run while their HTML, live parts and all, is still on the page, and then it's removed", () => {
   const parent = host();
   const page = signal("home");

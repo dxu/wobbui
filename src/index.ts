@@ -758,12 +758,13 @@ function append(parent: Node, child: Child): void {
 /**
  * A child that changes. Its HTML is whatever lies between two markers it adds to `parent`, so removing that HTML
  * removes what's there then: an element the new HTML, or another live spot, has taken since stays where it went.
- * Whenever a signal the function read changes, the function runs again. Then what the run before started stops, its
- * own live spots included, while its HTML is still on the page; and text changes in place, while anything else is
- * rebuilt: the old HTML is removed and the new added. A cleanup of the old HTML that throws doesn't stop the new HTML
- * from showing. If the function throws, the old HTML stays; if a function child it returns throws on its first run,
- * the spot shows nothing until the next change. Either way, what the failed HTML started stops. A spot that stops
- * leaves its HTML for whatever removes the HTML around it, so every cleanup inside runs while all of it is on the page.
+ * Whenever a signal the function read changes, what the run before started stops, its own live spots included, while
+ * its HTML is still on the page; then the function runs again, as a `watch` does, and text changes in place, while
+ * anything else is rebuilt: the old HTML is removed and the new added. A cleanup of the old HTML that throws doesn't
+ * stop the new HTML from showing. If the function throws, the old HTML stays, stopped; if a function child it returns
+ * throws on its first run, the spot shows nothing until the next change. Either way, what the failed HTML started
+ * stops. A spot that stops leaves its HTML for whatever removes the HTML around it, so every cleanup inside runs while
+ * all of it is on the page.
  */
 function liveSpot(parent: Node, live: ReadonlySignal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
@@ -772,6 +773,16 @@ function liveSpot(parent: Node, live: ReadonlySignal<unknown> | (() => unknown))
   let text: Text | undefined;
   let shown: Scope | undefined;
   bind(() => {
+    // What the last run started stops first, while its HTML is still on the page. If a cleanup throws, the spot still
+    // updates, and the error is rethrown once it has: the first error, ahead of any from this run.
+    let failure: { error: unknown } | undefined;
+    const ended = shown;
+    shown = undefined;
+    try {
+      ended?.dispose();
+    } catch (error) {
+      failure = { error };
+    }
     // What a function starts while it's read, HTML included, belongs to `next`, so the run after this one frees it.
     let next: Scope | undefined;
     let value: unknown;
@@ -782,20 +793,12 @@ function liveSpot(parent: Node, live: ReadonlySignal<unknown> | (() => unknown))
       try {
         value = within(next, live);
       } catch (error) {
-        rethrowAfter(error, () => next?.dispose());
+        rethrowAfter(failure === undefined ? error : failure.error, () => next?.dispose());
       }
     }
     // The rest reads no signal on purpose, so nothing it sets off, such as a custom element told it was removed,
     // subscribes the spot.
     outside(() => {
-      // What the last run started stops while its HTML is still on the page. If a cleanup throws, the new value still
-      // shows, and the error is rethrown once it does.
-      let failure: { error: unknown } | undefined;
-      try {
-        shown?.dispose();
-      } catch (error) {
-        failure = { error };
-      }
       // Text changes in place, unless the page has removed its node, as `normalize()` removes an empty one.
       if (text !== undefined && text.parentNode !== null && isText(value)) {
         shown = next;
@@ -815,8 +818,8 @@ function liveSpot(parent: Node, live: ReadonlySignal<unknown> | (() => unknown))
         text = isText(value) ? (fragment.firstChild as Text) : undefined;
         end.parentNode?.insertBefore(fragment, end);
       }
-      if (failure !== undefined) throw failure.error;
     });
+    if (failure !== undefined) throw failure.error;
   });
 }
 
