@@ -239,6 +239,26 @@ test("a watch whose first run throws is stopped", () => {
   assert.equal(runs, 1);
 });
 
+test("if making a watch throws, even from another watch it set off, the watch is stopped", () => {
+  const volume = signal(1);
+  const muted = signal(false);
+  const heard: number[] = [];
+  watch(() => {
+    if (muted.get()) throw new Error("the other watch broke");
+  });
+  assert.throws(
+    () =>
+      watch(() => {
+        heard.push(volume.get());
+        muted.set(true);
+      }),
+    /the other watch broke/,
+    "the error reaches the code that changed the signal",
+  );
+  volume.set(2);
+  assert.deepEqual(heard, [1]);
+});
+
 test("onCleanup outside mount or watch says where it belongs", () => {
   assert.throws(() => onCleanup(() => {}), /mount\(\) or watch\(\)/);
 });
