@@ -408,7 +408,7 @@ what `getOwner` returns; `Props<E>`, what JSX takes for an element `E`; and the 
 Measured on 18 October 2026, on wobbui 0.1.0, in headless Chrome 154 on an Apple M1 Max, while other work kept the
 machine busy: the same small menu (a heading, three links, a slider showing its value, and a number that changes every
 frame) built with each library and bundled minified. Medians of 12 page loads and 4 runs of 3 seconds each. Since then,
-fixes and the functions from `computed` to `runWithOwner` have added 1.48 KB to wobbui's own compressed size; the
+fixes and the functions from `computed` to `runWithOwner` have added 1.50 KB to wobbui's own compressed size; the
 timings weren't measured again.
 
 | | Compressed | Menu built, CPU slowed 4x | Script per frame, a number changing every frame |
