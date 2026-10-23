@@ -144,6 +144,18 @@ test("if a gone item's cleanup throws, the list still updates, and the error is 
   assert.deepEqual(texts(parent), ["Help", "Settings"]);
 });
 
+test("a hole in the list is the item undefined, and the list keeps updating after it", () => {
+  const parent = host();
+  const names = signal<readonly (string | undefined)[]>(["Ada"]);
+  mount(parent, () => <ul>{each(names, (name) => <li>{name ?? "nobody"}</li>)}</ul>);
+  const sparse: (string | undefined)[] = [];
+  sparse[1] = "Grace";
+  names.set(sparse);
+  assert.deepEqual(texts(parent), ["nobody", "Grace"]);
+  names.set(["Hedy"]);
+  assert.deepEqual(texts(parent), ["Hedy"]);
+});
+
 test("each's rows stop when the HTML around them goes", () => {
   const parent = host();
   const names = signal(["Ada", "Grace"]);

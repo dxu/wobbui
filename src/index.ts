@@ -853,27 +853,35 @@ export function each<T>(list: Live<readonly T[]>, render: (item: T) => Child): D
     const items = isLive(list) ? latest(list) : list;
     // The rest reads no signal on purpose, as in a live spot.
     outside(() => {
-      // Each item's rows, in the order they were shown.
+      // Each item's rows, last first, so `pop` takes them in the order they were shown.
       const old = new Map<T, Row<T>[]>();
-      for (const row of rows) {
+      for (let index = rows.length - 1; index >= 0; index--) {
+        const row = rows[index];
+        if (row === undefined) continue;
         const same = old.get(row.item);
         if (same === undefined) old.set(row.item, [row]);
         else same.push(row);
       }
+      const next: Row<T>[] = [];
       const built: Row<T>[] = [];
       try {
-        rows = items.map((item) => {
-          const kept = old.get(item)?.shift();
-          if (kept !== undefined) return kept;
+        // A hole in the list is the item `undefined`, as `for…of` reads it.
+        for (const item of items) {
+          const kept = old.get(item)?.pop();
+          if (kept !== undefined) {
+            next.push(kept);
+            continue;
+          }
           const row = { item, scope: owner.child(), start: marker(), end: marker() };
           built.push(row);
           within(row.scope, () => append(document.createDocumentFragment(), [row.start, render(item), row.end]));
-          return row;
-        });
+          next.push(row);
+        }
       } catch (error) {
         // No row is added or removed.
         rethrowAfter(error, () => forEach(built, (row) => row.scope.dispose()));
       }
+      rows = next;
       // A gone row's cleanups run while it's on the page; if one throws, the list still updates before it's rethrown.
       const gone = [...old.values()].flat();
       try {
