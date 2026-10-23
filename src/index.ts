@@ -5,8 +5,8 @@
  *   re-renders.
  * - A signal holds a value that changes. Put a signal, or a function that reads signals, where a property or a child
  *   goes, and that one spot updates when the value changes.
- * - `mount(parent, () => <App />)` adds the HTML to `parent` and returns `unmount`, which removes it and stops every
- *   live spot in it.
+ * - `mount(parent, () => <App />)` adds the HTML to `parent` and returns `unmount`, which stops every live spot in it
+ *   and then removes it.
  */
 
 // Signals ------------------------------------------------------------------------------------------------------------
@@ -124,35 +124,44 @@ export function signal<T>(value: T): Signal<T> {
 }
 
 /**
- * Runs `run` now, and again whenever a signal it read changes. Returns `stop`. Called while HTML is being built, it
- * also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped
- * before the next run. A cleanup that throws doesn't stop the next run; its error is rethrown after it.
+ * Runs `run` now, and again whenever a signal it read changes. Returns `stop`; calling it, even from a cleanup, ends
+ * the watch. Called while HTML is being built, it also stops when that HTML is removed. What a run starts, such as
+ * another `watch` or an `onCleanup`, is stopped before the next run. A cleanup that throws doesn't stop the next run;
+ * its error is rethrown after it.
  */
 export function watch(run: () => void): () => void {
   const owner = building;
   let pass: Scope | undefined;
+  let stopped = false;
   const endPass = () => {
     const ended = pass;
     pass = undefined;
     ended?.dispose();
   };
+  const onStop = () => {
+    stopped = true;
+    endPass();
+  };
   return bind(() => {
     // The run goes ahead even when ending the last one throws: it reads the signals that run it again, so skipping it
-    // would leave the watch listening to nothing, never to run again.
+    // would leave the watch listening to nothing, never to run again. But a cleanup that called `stop` ended the watch,
+    // and nothing would stop what a new run started.
     let failure: { error: unknown } | undefined;
     try {
       endPass();
     } catch (error) {
       failure = { error };
     }
-    pass = owner === undefined ? new Scope() : owner.child();
-    try {
-      within(pass, run);
-    } catch (error) {
-      failure ??= { error };
+    if (!stopped) {
+      pass = owner === undefined ? new Scope() : owner.child();
+      try {
+        within(pass, run);
+      } catch (error) {
+        failure ??= { error };
+      }
     }
     if (failure !== undefined) throw failure.error;
-  }, endPass);
+  }, onStop);
 }
 
 /**
@@ -214,14 +223,19 @@ export function onCleanup(cleanup: () => void): void {
   currentScope("onCleanup").onDispose(cleanup);
 }
 
-/** Starts a watcher for `run`, stopped with the HTML being built, if any. Returns `stop`, which also runs `onStop`. */
+/**
+ * Starts a watcher for `run`, stopped with the HTML being built, if any. Returns `stop`, which also runs `onStop`;
+ * once it's called, that HTML forgets it.
+ */
 function bind(run: () => void, onStop?: () => void): () => void {
   const watcher = new Watcher(run);
+  const owner = building;
   const stop = () => {
+    owner?.forget(stop);
     watcher.stop();
     onStop?.();
   };
-  building?.onDispose(stop);
+  owner?.onDispose(stop);
   try {
     watcher.run();
   } catch (error) {
@@ -271,12 +285,17 @@ class Scope {
     else this.#cleanups.add(cleanup);
   }
 
+  /** Lets go of `cleanup` without running it, once what it stops has stopped on its own. */
+  forget(cleanup: () => void): void {
+    this.#cleanups?.delete(cleanup);
+  }
+
   /** A scope disposed with this one, unless it's disposed first. */
   child(): Scope {
     const child = new Scope();
     const dispose = () => child.dispose();
     this.onDispose(dispose);
-    child.onDispose(() => this.#cleanups?.delete(dispose));
+    child.onDispose(() => this.forget(dispose));
     return child;
   }
 
@@ -330,32 +349,38 @@ export type Child =
 export type Live<T> = T | Signal<T> | (() => T);
 
 /**
- * Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which removes the HTML and stops every
- * live spot in it. Called while other HTML is being built, it's also unmounted when that HTML is removed, so a dialog
- * can mount itself on `document.body` and still go with the component that opened it.
+ * Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which stops every live spot in the HTML
+ * and then removes it. Called while other HTML is being built, it's also unmounted when that HTML is removed, so a
+ * dialog can mount itself on `document.body` and still go with the component that opened it.
  */
 export function mount(parent: Node, build: () => JSX.Element): () => void {
+  const owner = building;
   const scope = new Scope();
-  const unmount = () => scope.dispose();
+  const unmount = () => {
+    owner?.forget(unmount);
+    scope.dispose();
+  };
+  // The HTML is whatever lies between two markers, so unmounting removes what's there then: an element that another
+  // mount or a live spot has taken since stays where it went. Removing it is the scope's first cleanup, so it runs
+  // last, once what the HTML started has stopped.
+  const start = marker();
+  const end = marker();
+  scope.onDispose(() => {
+    clear(start, end);
+    start.remove();
+    end.remove();
+  });
   try {
     const html = within(scope, () => track(undefined, build));
-    // The HTML is whatever lies between two markers, so unmounting removes what's there then: an element that another
-    // mount or a live spot has taken since stays where it went. The markers go in first, so a parent that refuses the
-    // HTML refuses it before it leaves wherever it was.
-    const start = marker();
-    const end = marker();
-    scope.onDispose(() => {
-      clear(start, end);
-      start.remove();
-      end.remove();
-    });
+    // The markers go in first, so a parent that refuses the HTML refuses it before it leaves wherever it was.
     parent.appendChild(start);
     parent.appendChild(end);
     parent.insertBefore(html, end);
   } catch (error) {
     rethrowAfter(error, unmount);
   }
-  building?.onDispose(unmount);
+  // Only once the HTML is on the page, so that if what's being built went while this was built, this removes it now.
+  owner?.onDispose(unmount);
   return unmount;
 }
 
@@ -404,8 +429,16 @@ export function Fragment(props: { children?: Child }): DocumentFragment {
   return fragment;
 }
 
+/**
+ * The props that would put text on the page as HTML, in lowercase. The types refuse them too; this catches untyped
+ * calls, whatever their case, since `srcDoc` would set the `srcdoc` attribute.
+ */
+const RAW_HTML = new Set(["innerhtml", "outerhtml", "srcdoc"]);
+
 function setProperty(element: HTMLElement, name: string, value: unknown): void {
-  if (name.startsWith("on")) {
+  if (RAW_HTML.has(name.toLowerCase())) {
+    throw new Error(`wobbui: ${name} isn't a prop, since it would put text on the page as HTML. Set it in a ref.`);
+  } else if (name.startsWith("on")) {
     // A handler can run while HTML is still being built, as when building focuses an input, so it runs as the page
     // would run it: subscribing nothing, and its reads not warned about.
     (element as unknown as Record<string, unknown>)[name] =
@@ -422,19 +455,42 @@ function setProperty(element: HTMLElement, name: string, value: unknown): void {
   }
 }
 
-/** The attribute a property reflects, where its name isn't the property's own. */
+/** The attribute a property reflects, where it isn't the property's name in lowercase or an ARIA property's. */
 const ATTRIBUTE_OF = new Map([
   ["className", "class"],
   ["htmlFor", "for"],
+  ["httpEquiv", "http-equiv"],
+  ["acceptCharset", "accept-charset"],
+  ["defaultChecked", "checked"],
+  ["defaultSelected", "selected"],
+  ["defaultMuted", "muted"],
 ]);
 
-/** What a property goes back to when it's given `null` or `undefined`, where removing its attribute wouldn't do it. */
+/** The attribute a property reflects, as `ariaLabel` reflects `aria-label`. */
+function attributeOf(name: string): string {
+  return ATTRIBUTE_OF.get(name) ?? (name.startsWith("aria") ? `aria-${name.slice(4).toLowerCase()}` : name);
+}
+
+/**
+ * What a property goes back to when it's given `null` or `undefined`, where it holds what's entered or shown instead of
+ * reflecting an attribute. `value` does so only on the elements in `ENTERED`; elsewhere, as on `<progress>` or
+ * `<option>`, removing its attribute clears it. `defaultValue` is a textarea's text, so it's set, not removed.
+ */
 const EMPTY = new Map<string, unknown>([
   ["value", ""],
+  ["defaultValue", ""],
+  ["valueAsNumber", NaN],
+  ["valueAsDate", null],
   ["checked", false],
   ["indeterminate", false],
+  ["selected", false],
+  ["selectedIndex", -1],
   ["textContent", ""],
+  ["innerText", ""],
 ]);
+
+/** The elements whose `value` holds what's entered or shown. */
+const ENTERED = new Set(["INPUT", "OUTPUT", "SELECT", "TEXTAREA"]);
 
 /**
  * Sets a DOM property by its own name, or an attribute when the name has a dash or isn't a property. `null` and
@@ -449,8 +505,8 @@ function assign(element: HTMLElement, name: string, value: unknown): void {
     if (value === null || value === undefined || (value === false && !dashed)) element.removeAttribute(name);
     else element.setAttribute(name, value === true && !dashed ? "" : String(value));
   } else if (value === null || value === undefined) {
-    if (EMPTY.has(name)) properties[name] = EMPTY.get(name);
-    else element.removeAttribute(ATTRIBUTE_OF.get(name) ?? name);
+    if (EMPTY.has(name) && (name !== "value" || ENTERED.has(element.tagName))) properties[name] = EMPTY.get(name);
+    else element.removeAttribute(attributeOf(name));
   } else {
     try {
       properties[name] = value;
@@ -486,20 +542,21 @@ function append(parent: Node, child: Child): void {
 /**
  * A child that changes. Its HTML is whatever lies between two markers it adds to `parent`, so removing that HTML
  * removes what's there then: an element the new HTML, or another live spot, has taken since stays where it went.
- * Text changes in place. Anything else is rebuilt whenever a signal the function read changes: the HTML it showed
- * before is removed, and its own live spots stop. A cleanup of the old HTML that throws doesn't stop the new HTML from
- * showing. If the function throws, the old HTML stays; if a function child it returns throws on its first run, the spot
- * shows nothing until the next change. Either way, what the failed HTML started stops.
+ * Whenever a signal the function read changes, the function runs again. Then what the run before started stops, its
+ * own live spots included, while its HTML is still on the page; and text changes in place, while anything else is
+ * rebuilt: the old HTML is removed and the new added. A cleanup of the old HTML that throws doesn't stop the new HTML
+ * from showing. If the function throws, the old HTML stays; if a function child it returns throws on its first run,
+ * the spot shows nothing until the next change. Either way, what the failed HTML started stops. A spot that stops
+ * leaves its HTML for whatever removes the HTML around it, so every cleanup inside runs while all of it is on the page.
  */
 function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
   const owner = currentScope("A live value");
   const start = parent.appendChild(marker());
   const end = parent.appendChild(marker());
-  const removeShown = () => clear(start, end);
   let text: Text | undefined;
   let shown: Scope | undefined;
   bind(() => {
-    // HTML a function builds while it's read belongs to `next`, so rebuilding frees it.
+    // What a function starts while it's read, HTML included, belongs to `next`, so the run after this one frees it.
     let next: Scope | undefined;
     let value: unknown;
     if (live instanceof Signal) {
@@ -512,33 +569,38 @@ function liveSpot(parent: Node, live: Signal<unknown> | (() => unknown)): void {
         rethrowAfter(error, () => next?.dispose());
       }
     }
-    // Text changes in place, unless the page has removed its node, as `normalize()` removes an empty one.
-    if (text !== undefined && text.parentNode !== null && isText(value)) {
-      text.data = String(value);
-      next?.dispose();
-      return;
-    }
-    next ??= owner.child();
-    // The old HTML goes before the value is added, so an element the function returns again stays on the page. If a
-    // cleanup of the old throws, the new HTML still shows, and the error is rethrown once it does.
-    let failure: { error: unknown } | undefined;
-    try {
-      shown?.dispose();
-    } catch (error) {
-      failure = { error };
-    }
-    shown = next;
-    text = undefined;
-    const fragment = document.createDocumentFragment();
-    try {
-      within(next, () => track(undefined, () => append(fragment, value as Child)));
-    } catch (error) {
-      rethrowAfter(failure === undefined ? error : failure.error, () => next?.dispose());
-    }
-    text = isText(value) ? (fragment.firstChild as Text) : undefined;
-    next.onDispose(removeShown);
-    end.parentNode?.insertBefore(fragment, end);
-    if (failure !== undefined) throw failure.error;
+    // The rest reads no signal on purpose, so nothing it sets off, such as a custom element told it was removed,
+    // subscribes the spot.
+    outside(() => {
+      // What the last run started stops while its HTML is still on the page. If a cleanup throws, the new value still
+      // shows, and the error is rethrown once it does.
+      let failure: { error: unknown } | undefined;
+      try {
+        shown?.dispose();
+      } catch (error) {
+        failure = { error };
+      }
+      // Text changes in place, unless the page has removed its node, as `normalize()` removes an empty one.
+      if (text !== undefined && text.parentNode !== null && isText(value)) {
+        shown = next;
+        text.data = String(value);
+      } else {
+        // The old HTML goes before the new is added, so an element the function returns again stays on the page.
+        clear(start, end);
+        text = undefined;
+        const scope = next ?? owner.child();
+        shown = scope;
+        const fragment = document.createDocumentFragment();
+        try {
+          within(scope, () => append(fragment, value as Child));
+        } catch (error) {
+          rethrowAfter(failure === undefined ? error : failure.error, () => scope.dispose());
+        }
+        text = isText(value) ? (fragment.firstChild as Text) : undefined;
+        end.parentNode?.insertBefore(fragment, end);
+      }
+      if (failure !== undefined) throw failure.error;
+    });
   });
 }
 
@@ -552,32 +614,46 @@ type IfEquals<X, Y, Then, Else> = (<T>() => T extends X ? 1 : 2) extends <T>() =
 
 /**
  * The properties of `E` JSX can set: named ones only (a form's index signature would accept anything), not read-only,
- * not methods, not handlers, and not `style`, which takes text.
+ * not methods, not handlers, not `style`, which takes text, and not raw HTML, which would put text on the page as HTML.
  */
 type Settable<E> = {
   [K in keyof E]-?: string extends K
     ? never
     : number extends K
       ? never
-      : K extends `on${string}` | "style"
+      : K extends `on${string}` | "style" | "innerHTML" | "outerHTML" | "srcdoc"
         ? never
         : E[K] extends (...args: never[]) => unknown
           ? never
           : IfEquals<{ [P in K]: E[K] }, { -readonly [P in K]: E[K] }, K, never>;
 }[keyof E];
 
+/** The elements whose `form` attribute names, by its `id`, the form they belong to. */
+type FormControl = HTMLElementTagNameMap["button" | "fieldset" | "input" | "object" | "output" | "select" | "textarea"];
+
+/**
+ * The read-only properties JSX sets through the attribute they reflect: a form control's `form`, and an input's
+ * `list`, which names the `<datalist>` of its suggestions by its `id`.
+ */
+type SetByAttribute<E> = (E extends FormControl ? "form" : never) | (E extends HTMLInputElement ? "list" : never);
+
 /** The event an element's `on…` property hands its handler. */
 type EventOf<Handler> = NonNullable<Handler> extends (this: never, event: infer E) => unknown ? E : Event;
 
-/** What JSX takes for an element `E`. A text property takes a number too, as in `min={0}`. */
+/**
+ * What JSX takes for an element `E`. A text property takes a number too, as in `min={0}`, and every property takes
+ * `null` or `undefined`, which clear it.
+ */
 export type Props<E extends HTMLElement> = {
-  [K in Settable<E>]?: Live<E[K] extends string ? E[K] | number : E[K]>;
+  [K in Settable<E>]?: Live<(E[K] extends string ? E[K] | number : E[K]) | null | undefined>;
+} & {
+  [K in SetByAttribute<E>]?: Live<string | null | undefined>;
 } & {
   [K in keyof E as K extends `on${string}` ? K : never]?: (event: EventOf<E[K]> & { currentTarget: E }) => void;
 } & {
   children?: Child;
   ref?: (element: E) => void;
-  style?: Live<string>;
+  style?: Live<string | null | undefined>;
   [attribute: `data-${string}` | `aria-${string}`]: Live<string | number | boolean | null | undefined>;
 };
 

@@ -80,6 +80,33 @@ test("onCleanup in a part that rebuilds runs when that part is rebuilt", () => {
   assert.equal(parent.textContent, "settings");
 });
 
+test("cleanups run while their HTML, live parts and all, is still on the page, and then it's removed", () => {
+  const parent = host();
+  const page = signal("home");
+  const greeting = signal("hello");
+  const seen: string[] = [];
+  function Page(props: { name: string }) {
+    onCleanup(() => seen.push(`${props.name} left, page showing "${parent.textContent}"`));
+    return (
+      <h1>
+        {props.name}, {greeting}
+      </h1>
+    );
+  }
+  const unmount = mount(parent, () => {
+    onCleanup(() => seen.push(`unmounted, page showing "${parent.textContent}"`));
+    return <main>{() => <Page name={page.get()} />}</main>;
+  });
+  page.set("settings");
+  unmount();
+  assert.deepEqual(seen, [
+    'home left, page showing "home, hello"',
+    'settings left, page showing "settings, hello"',
+    'unmounted, page showing "settings, hello"',
+  ]);
+  assert.equal(parent.childNodes.length, 0);
+});
+
 test("a part that throws while rebuilding stops what it started", () => {
   const parent = host();
   const broken = signal(false);
@@ -117,6 +144,20 @@ test("if adding the HTML to the parent throws, what was started stops", () => {
   );
   volume.set(2);
   assert.deepEqual(heard, [1]);
+});
+
+test("a mount whose owner goes while it's being built is removed as soon as it's added", () => {
+  const parent = host();
+  const opened = signal(false);
+  const stop = watch(() => {
+    const closing = opened.get();
+    mount(parent, () => {
+      if (closing) stop();
+      return <p>Dialog</p>;
+    });
+  });
+  opened.set(true);
+  assert.equal(parent.childNodes.length, 0);
 });
 
 test("unmounting twice does nothing the second time", () => {
@@ -164,7 +205,7 @@ test("unmount leaves an element that a later mount in the same parent has taken"
   assert.equal(parent.textContent, "Panel");
 });
 
-test("unmount empties the live spots it built inside an element another mount has taken", () => {
+test("unmount stops the live spots it built inside an element another mount has taken, keeping what they showed", () => {
   const first = host();
   const second = host();
   const count = signal(1);
@@ -173,7 +214,7 @@ test("unmount empties the live spots it built inside an element another mount ha
   mount(second, () => card);
   unmountFirst();
   count.set(2);
-  assert.equal(second.textContent, "Count: ");
+  assert.equal(second.textContent, "Count: 1");
 });
 
 test("if the parent refuses the HTML, an element shown elsewhere stays where it was", () => {

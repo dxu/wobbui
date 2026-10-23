@@ -7,10 +7,10 @@ doesn't change costs nothing after it's built, and a number that changes every f
   re-renders.
 - **A signal holds a value that changes.** Pass a signal, or a function that reads signals, where a property or a child
   goes, and that one spot updates when the value changes.
-- **`mount` returns `unmount`,** which removes the HTML and stops everything live in it, including whatever was started
-  while it was built.
+- **`mount` returns `unmount`,** which stops everything live in the HTML, including whatever was started while it was
+  built, and then removes it.
 
-It is one small file with no dependencies: about 2.1 KB compressed.
+It is one small file with no dependencies: about 2.4 KB compressed.
 
 ```sh
 npm install wobbui
@@ -56,11 +56,18 @@ const unmount = mount(document.body, () => (
   misspelled property or a value of the wrong type is a type error. A text property takes a number too: `min={0}`.
 - **A name with a dash is an attribute,** such as `data-id` or `aria-label`. It writes `true` and `false` out, as
   `aria-expanded={open}` needs.
-- **`null` or `undefined` clears a property,** so an optional prop passed straight through leaves nothing behind.
+- **`null` or `undefined` clears a property,** so an optional prop passed straight through leaves nothing behind. The
+  attribute it reflects is removed, so a progress bar's `value` goes back to showing it's still loading, and an
+  option's `value` to its text. The properties that hold what's entered or shown go back to empty instead: `value` on
+  an input, select, textarea or output, and `defaultValue`, `valueAsNumber`, `valueAsDate`, `checked`, `indeterminate`,
+  `selected`, `selectedIndex`, `textContent` and `innerText`. A property that does neither, such as `volume` or
+  `scrollTop`, keeps its value.
 - **`style` takes text:** `style="width: 8rem"`.
 - **`ref` gets the element** once it's built, children and all, before it's on the page:
   `<canvas ref={(canvas) => (context = canvas.getContext("2d"))} />`. To focus an input, keep it this way and call
   `focus()` after `mount`.
+- **Raw HTML isn't a prop** (`innerHTML`, `outerHTML` or an iframe's `srcdoc`): it's a type error, and an error when
+  it's run without types. When you must, a `ref` can set it, never with text you don't control.
 - **An input's value is set last,** after its other properties and its children, so a select already has its options
   and a range input its `min` and `max`.
 
@@ -102,8 +109,8 @@ that points at the line. Read once on purpose, such as to start a form from a sa
 `signal(untracked(() => saved.get()))`. Bundlers such as Vite pick wobbui's development build while developing, which
 has the warnings on; a production build leaves them off. `setWarnings(true)` turns them on anywhere else.
 
-A function child can return HTML. When a signal it read changes, the HTML it showed is removed, the live spots inside
-it stop, and it's built again:
+A function child can return HTML. When a signal it read changes, the function runs again and builds the new HTML;
+then the live spots inside the HTML it showed stop, that HTML is removed, and the new HTML takes its place:
 
 ```tsx
 const open = signal(false);
@@ -164,9 +171,9 @@ mount(document.body, () => <Slider label="Volume" value={volume} max={10} />);
 
 ## Lifetimes
 
-`mount` returns `unmount`, which removes the HTML and stops every live spot in it. What wobbui started while the HTML
-was built goes with it: a `watch` started in a component stops, and a `mount` started in a component, such as a dialog
-mounted on `document.body`, is unmounted. For what wobbui doesn't know about, such as a timer or a listener on
+`mount` returns `unmount`, which stops every live spot in the HTML and then removes it. What wobbui started while the
+HTML was built goes with it: a `watch` started in a component stops, and a `mount` started in a component, such as a
+dialog mounted on `document.body`, is unmounted. For what wobbui doesn't know about, such as a timer or a listener on
 `window`, `onCleanup` runs a function when the HTML goes:
 
 ```tsx
@@ -180,8 +187,11 @@ function Clock() {
 }
 ```
 
-A part that rebuilds is cleaned up the same way each time it's rebuilt, and so is a `watch` before each of its runs:
-another `watch` or an `onCleanup` started in a run is stopped before the next.
+A part that rebuilds is cleaned up the same way each time: its function runs again first and builds the new HTML, and
+then what the old HTML started is stopped. A `watch` is cleaned up before each run instead: another `watch` or an
+`onCleanup` started in a run is stopped before the next run starts. Cleanups run while their HTML, live parts and
+all, is still on the page, and then it's removed, so a cleanup can still read it, such as to save how far it was
+scrolled.
 
 When something throws, wobbui keeps going. A cleanup that throws as old HTML goes doesn't stop the new HTML from
 showing, and a `watch` whose cleanup throws still runs. If a part's function throws, the part keeps the HTML it
@@ -219,11 +229,12 @@ Returns a `Signal<T>`:
 
 ### `watch(run)`
 
-Runs `run` now, and again whenever a signal it read the last time changes. Returns `stop`. Started while HTML is built,
-it also stops when that HTML is removed. What a run starts, such as another `watch` or an `onCleanup`, is stopped before
-the next run; a cleanup that throws doesn't stop the next run, and its error is rethrown after it. A run that changes a
-signal it read runs once more afterwards, even if it threw, so the last run sees the settled value; one that keeps
-changing it stops with an error after 100 runs. If the first run throws, the watch is stopped.
+Runs `run` now, and again whenever a signal it read the last time changes. Returns `stop`; calling it, even from a
+cleanup, ends the watch. Started while HTML is built, it also stops when that HTML is removed. What a run starts, such
+as another `watch` or an `onCleanup`, is stopped before the next run; a cleanup that throws doesn't stop the next run,
+and its error is rethrown after it. A run that changes a signal it read runs once more afterwards, even if it threw, so
+the last run sees the settled value; one that keeps changing it stops with an error after 100 runs. If the first run
+throws, the watch is stopped.
 
 ### `onCleanup(cleanup)`
 
@@ -242,10 +253,11 @@ through the `development` export condition.
 
 ### `mount(parent, build)`
 
-Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which removes it and stops everything live
-in it; running it again does nothing. An element another mount or a live spot has taken since stays where it went,
-but the live spots this mount built inside it stop, and empty. Started while other HTML is built, it's also unmounted
-with that HTML. If `build` or adding the HTML throws, nothing is added, and whatever it started stops.
+Builds the HTML `build` returns and adds it to `parent`. Returns `unmount`, which stops everything live in it and then
+removes it; running it again does nothing. An element another mount or a live spot has taken since stays where it
+went, but the live spots this mount built inside it stop, keeping what they showed. Started while other HTML is built,
+it's also unmounted with that HTML. If `build` or adding the HTML throws, nothing is added, and whatever it started
+stops.
 
 ### Types
 
@@ -257,7 +269,7 @@ with that HTML. If `build` or adding the HTML throws, nothing is added, and what
 Measured on 18 October 2026, on wobbui 0.1.0, in headless Chrome 154 on an Apple M1 Max, while other work kept the
 machine busy: the same small menu (a heading, three links, a slider showing its value, and a number that changes every
 frame) built with each library and bundled minified. Medians of 12 page loads and 4 runs of 3 seconds each. Since then,
-0.2.0's fixes have added 0.14 KB to wobbui's own compressed size; the timings weren't measured again.
+fixes have added 0.45 KB to wobbui's own compressed size; the timings weren't measured again.
 
 | | Compressed | Menu built, CPU slowed 4x | Script per frame, a number changing every frame |
 | --- | --- | --- | --- |

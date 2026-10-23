@@ -1,7 +1,7 @@
 import { host } from "./dom.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mount, onCleanup, signal, type Signal } from "wobbui";
+import { mount, onCleanup, signal } from "wobbui";
 
 test("a signal child changes its text in place", () => {
   const parent = host();
@@ -54,6 +54,47 @@ test("a function child rebuilds when what it read changes, and stops the HTML it
   assert.equal(builds, 2, "the <b> it replaced no longer listens");
 });
 
+test("a function child that shows text stops what its last run started, and keeps what this run started", () => {
+  const parent = host();
+  const id = signal(1);
+  const polling = new Set<number>();
+  mount(parent, () => (
+    <p>
+      {() => {
+        const current = id.get();
+        polling.add(current);
+        onCleanup(() => polling.delete(current));
+        return "Polling";
+      }}
+    </p>
+  ));
+  id.set(2);
+  id.set(3);
+  assert.deepEqual([...polling], [3]);
+  assert.equal(parent.textContent, "Polling");
+});
+
+test("when a function child switches from text to an element, what its last text run started stops", () => {
+  const parent = host();
+  const step = signal(1);
+  const running = new Set<number>();
+  mount(parent, () => (
+    <p>
+      {() => {
+        const current = step.get();
+        running.add(current);
+        onCleanup(() => running.delete(current));
+        return current < 3 ? `Step ${current}` : <b>Done</b>;
+      }}
+    </p>
+  ));
+  step.set(2);
+  assert.deepEqual([...running], [2], "while the text shows, what its run started keeps going");
+  step.set(3);
+  assert.deepEqual([...running], [3]);
+  assert.equal(parent.textContent, "Done");
+});
+
 test("a live property updates", () => {
   const parent = host();
   const volume = signal(3);
@@ -80,13 +121,7 @@ test("a live property given null is cleared", () => {
   const style = signal<string | null>("font-bold");
   const tip = signal<string | null>("Saves your changes");
   const text = signal<string | null>("Ada");
-  mount(parent, () => (
-    <input
-      className={style as unknown as Signal<string>}
-      title={tip as unknown as Signal<string>}
-      value={text as unknown as Signal<string>}
-    />
-  ));
+  mount(parent, () => <input className={style} title={tip} value={text} />);
   const input = parent.querySelector("input");
   assert.ok(input);
   style.set(null);
@@ -95,6 +130,92 @@ test("a live property given null is cleared", () => {
   assert.equal(input.getAttribute("class"), null);
   assert.equal(input.getAttribute("title"), null);
   assert.equal(input.value, "");
+});
+
+test("a live valueAsNumber, valueAsDate or selectedIndex given null is cleared", () => {
+  const parent = host();
+  const amount = signal<number | null>(5);
+  const due = signal<Date | null>(new Date("2026-10-22"));
+  const size = signal<number | null>(1);
+  mount(parent, () => (
+    <form>
+      <input type="number" valueAsNumber={amount} />
+      <input type="date" valueAsDate={due} />
+      <select selectedIndex={size}>
+        <option>Small</option>
+        <option>Large</option>
+      </select>
+    </form>
+  ));
+  const [amountInput, dueInput] = parent.querySelectorAll("input");
+  const select = parent.querySelector("select");
+  assert.ok(amountInput && dueInput && select);
+  assert.equal(amountInput.value, "5");
+  assert.equal(dueInput.value, "2026-10-22");
+  assert.equal(select.selectedIndex, 1);
+  amount.set(null);
+  due.set(null);
+  size.set(null);
+  assert.equal(amountInput.value, "");
+  assert.equal(dueInput.value, "");
+  assert.equal(select.selectedIndex, -1);
+});
+
+test("null removes the attribute a property reflects: a progress bar's value and an option's", () => {
+  const parent = host();
+  const loaded = signal<number | null>(0.5);
+  const code = signal<string | null>("nl");
+  mount(parent, () => (
+    <form>
+      <progress value={loaded} />
+      <select>
+        <option value={code}>Dutch</option>
+      </select>
+    </form>
+  ));
+  const progress = parent.querySelector("progress");
+  const option = parent.querySelector("option");
+  assert.ok(progress && option);
+  assert.equal(progress.getAttribute("value"), "0.5");
+  assert.equal(option.value, "nl");
+  loaded.set(null);
+  code.set(null);
+  assert.equal(progress.getAttribute("value"), null, "the bar shows it's still loading");
+  assert.equal(option.value, "Dutch", "the option's value is its text again");
+});
+
+test("null empties an option's selected, an innerText, and an input's and a textarea's default value", () => {
+  const parent = host();
+  const chosen = signal<boolean | null>(true);
+  const note = signal<string | null>("Saved");
+  const initial = signal<string | null>("Ada");
+  mount(parent, () => (
+    <form>
+      <select>
+        <option>Small</option>
+        <option selected={chosen}>Large</option>
+      </select>
+      <p innerText={note} />
+      <input defaultValue={initial} />
+      <textarea defaultValue={initial} />
+    </form>
+  ));
+  const option = parent.querySelectorAll("option")[1];
+  const paragraph = parent.querySelector("p");
+  const input = parent.querySelector("input");
+  const textarea = parent.querySelector("textarea");
+  assert.ok(option && paragraph && input && textarea);
+  assert.equal(option.selected, true);
+  assert.equal(paragraph.textContent, "Saved");
+  assert.equal(input.defaultValue, "Ada");
+  assert.equal(textarea.defaultValue, "Ada");
+  chosen.set(null);
+  note.set(null);
+  initial.set(null);
+  assert.equal(option.selected, false);
+  assert.equal(paragraph.textContent, "");
+  assert.equal(input.defaultValue, "");
+  assert.equal(textarea.defaultValue, "");
 });
 
 test("a live aria- attribute follows its signal", () => {
